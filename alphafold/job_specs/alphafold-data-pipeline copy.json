@@ -1,0 +1,66 @@
+{
+    "taskGroups": [
+        {
+            "taskSpec": {
+                "runnables": [
+                    {
+                        "container": {
+                            "imageUri": "gcr.io/jk-mlops-dev/alphafold",
+                            "entrypoint": "python",
+                            "commands": [
+                                "/runners/run_data_pipeline.py",
+                                "--fasta_path=gs://jk-alphafold-staging/fasta/T1050.fasta",
+                                "--max_template_date=2020-05-14",
+                                "--msa_output_path=gs://jk-alphafold-staging/batch/jobs/101/msas",
+                                "--features_output_path=gs://jk-alphafold-staging/batch/jobs/101/features"
+                            ],
+                            "volumes": [
+                                "/mnt/disks/alphafold:/ref_databases"
+                            ]
+                        }
+                    }
+                ],
+                "volumes": [
+                    {
+                        "deviceName": "databases",
+                        "mountPath": "/mnt/disks/alphafold",
+                        "mountOptions": "discard,defaults"
+                    }
+                ],
+                "computeResource": {
+                    "cpuMilli": 14000,
+                    "memoryMib": 40000 
+                },
+                "maxRetryCount": 2,
+                "maxRunDuration": "3600s"
+            },
+            "taskCount": 1,
+            "parallelism": 1
+        }
+    ],
+    "allocationPolicy": {
+        "instances": [
+            {
+                "policy": { 
+                    "machineType": "c2-standard-16",
+                    "disks": [
+                        {
+                            "deviceName": "databases",
+                            "newDisk": {
+                                "type": "pd-standard",
+                                "image": "projects/jk-mlops-dev/global/images/alphafold-datasets-v220-image"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "labels": {
+        "experiment": "t0150",
+        "run": "run1"
+    },
+    "logsPolicy": {
+        "destination": "CLOUD_LOGGING"
+    }
+}

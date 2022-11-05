@@ -3,7 +3,7 @@
 ### Hello World
 
 ```
-gcloud batch jobs submit example-container-job \
+gcloud batch jobs submit alphafold-inference-job-34 \
   --location us-central1 \
-  --config hello-world-container.json
+  --config alphafold-data-pipeline.json 
 ```
