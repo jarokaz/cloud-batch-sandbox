@@ -9,13 +9,13 @@
                             "entrypoint": "python",
                             "commands": [
                                 "/runners/run_data_pipeline.py",
-                                "--fasta_path=gs://jk-alphafold-staging/fasta/T1050.fasta",
+                                "--fasta_path=/job_dir/fasta/T1050.fasta",
                                 "--max_template_date=2020-05-14",
-                                "--msa_output_path=gs://jk-alphafold-staging/batch/jobs/101/msas",
-                                "--features_output_path=gs://jk-alphafold-staging/batch/jobs/101/features"
+                                "--output_path=/job_dir"
                             ],
                             "volumes": [
-                                "/mnt/disks/alphafold:/ref_databases"
+                                "/mnt/disks/alphafold:/ref_databases",
+                                "/mnt/disks/job:/job_dir"
                             ]
                         }
                     }
@@ -23,8 +23,13 @@
                 "volumes": [
                     {
                         "deviceName": "databases",
-                        "mountPath": "/mnt/disks/alphafold",
-                        "mountOptions": "discard,defaults"
+                        "mountPath": "/mnt/disks/alphafold"
+                    },
+                    {
+                        "gcs": {
+                            "remotePath": "jk-alphafold-staging/batch-jobs/job-1/"
+                        },
+                        "mountPath": "/mnt/disks/job"
                     }
                 ],
                 "computeResource": {
@@ -46,10 +51,7 @@
                     "disks": [
                         {
                             "deviceName": "databases",
-                            "newDisk": {
-                                "type": "pd-standard",
-                                "image": "projects/jk-mlops-dev/global/images/alphafold-datasets-v220-image"
-                            }
+                            "existingDisk": "projects/jk-mlops-dev/zones/us-central1-a/disks/alphafold-datasets-v220"
                         }
                     ]
                 }

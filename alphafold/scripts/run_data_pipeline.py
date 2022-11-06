@@ -20,8 +20,10 @@ from absl import flags
 from absl import app
 from absl import logging
 
+from alphafold_utils import run_data_pipeline
 
 flags.DEFINE_string('fasta_path', None, 'A path to sequence')
+flags.DEFINE_string('output_path', None, 'A path to a directory that will store results')
 flags.DEFINE_string('ref_dbs_mount_path', '/ref_databases', 'Mount path to reference dbs')
 flags.DEFINE_string('uniref90_database_path', 'uniref90/uniref90.fasta', 'Uniref90 database path')
 flags.DEFINE_string('mgnify_database_path', 'mgnify/mgy_clusters_2018_12.fa', 'Mgnify database path')
@@ -40,16 +42,22 @@ flags.DEFINE_bool('use_small_bfd', True, 'Use small BFD')
 flags.DEFINE_bool('run_multimer_system', False, 'Run multimer system')
 flags.mark_flag_as_required('fasta_path')
 flags.mark_flag_as_required('max_template_date')
-flags.mark_flag_as_required('msa_output_path')
-flags.mark_flag_as_required('features_output_path')
+flags.mark_flag_as_required('output_path')
 FLAGS = flags.FLAGS
 
-from alphafold_utils import run_data_pipeline
+MSA_OUTPUT_FOLDER = 'msas'
+FEATURES_FILE = 'features.pkl'
 
 def _main(argv):
-
-    logging.info(f'Running data pipeline')  
     
+    logging.info(f'Running data pipeline on: {FLAGS.fasta_path}')  
+    logging.info(f'Results stored to: {FLAGS.output_path}')  
+
+    os.makedirs(FLAGS.output_path, exist_ok=True)
+    msa_output_path = os.path.join(FLAGS.output_path, MSA_OUTPUT_FOLDER)
+    os.makedirs(msa_output_path, exist_ok=True)
+    features_output_path = os.path.join(FLAGS.output_path, FEATURES_FILE)
+
     uniref90_database_path = os.path.join(
         FLAGS.ref_dbs_mount_path, FLAGS.uniref90_database_path)
     mgnify_database_path = os.path.join(
@@ -86,8 +94,8 @@ def _main(argv):
         seqres_database_path=seqres_database_path,
         mmcif_path=mmcif_path,
         max_template_date=FLAGS.max_template_date,
-        msa_output_path=FLAGS.msa_output_path,
-        features_output_path=FLAGS.features_output_path,
+        msa_output_path=msa_output_path,
+        features_output_path=features_output_path,
     )   
 
 if __name__ == "__main__":

@@ -1,0 +1,154 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# [START workflows_batch_primegen]
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - region: "us-central1"
+          - batchApi: "batch.googleapis.com/v1"
+          - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
+          - imageUri: ${"gcr.io/" + projectId + "alphafold"}
+          - jobId: ${"job-alphafold-" + string(int(sys.now()))}
+          - mountPathJobDir: "/mnt/disks/job"
+          - mountPathRefDbs: "/mnt/disks/alphafold"
+          - refDBsDeviceName: "databases"
+          - stagingBucketName: "jk-alphafold-staging"
+          - jobDir: ${"batch-jobs/" + jobId} 
+          - machineTypeCPU: "c2-standard-16"
+          - cpuMilli: 14000
+          - memoryMib: 40000
+          - maxRetryCount: 2
+          - maxRunDuration: "7200s"
+          - machineTypeGPU: "a2-highgpu-1g"
+          - refDBsDisk: "projects/jk-mlops-dev/zones/us-central1-a/disks/alphafold-datasets-v220"
+          - fastaSequence: "jk-alphafold-staging/fasta/T1050.fasta"
+          - fastaBucket: ${text.split(fastaSequence, "/")[0]}
+          - fastaObject: ${text.substring(fastaSequence, len(text.split(fastaSequence, "/")[0]) + 1, len(fastaSequence))}
+          - maxTemplateDate: "2020-05-14"
+          - useSmallBFD: true 
+    - logDebug:
+        call: sys.log
+        args:
+          data: ${"Running data pipeline on:" + "gs://" + fastaBucket + "/" + fastaObject} 
+    #- theend:
+    #    next: end
+    - copySequence:
+        call: googleapis.storage.v1.objects.copy
+        args:
+            destinationBucket: ${text.url_encode(stagingBucketName)} 
+            destinationObject: ${text.url_encode(jobDir + "/" + "sequence.fasta")}
+            sourceBucket: ${text.url_encode(fastaBucket)}
+            sourceObject: ${text.url_encode(fastaObject)}
+    - runDataPipelineJob:
+        call: http.post
+        args:
+          url: ${batchApiUrl}
+          query:
+            job_id: ${jobId}
+          headers:
+            Content-Type: application/json
+          auth:
+            type: OAuth2
+          body:
+            taskGroups:
+              taskSpec:
+                runnables:
+                  - container:
+                      imageUri: ${imageUri}
+                      entrypoint: "python"
+                      commands:
+                        - "/runners/run_data_pipeline.py"
+                        - "--ref_dbs_mount_path=/mnt/disks/ref_dbs"
+                        - "--fasta_path=/mnt/disks/job_dir/sequence.fasta"
+                        - ${"--max_template_date=" + maxTemplateDate}
+                        - ${if(useSmallBFD, "--use_small_bfd", "--nouse_small_bfd")}
+                        - "--ouput_path=/job_dir"
+                volumes:
+                  - deviceName: "databases"
+                    mountPath: "/mnt/disks/ref_dbs"
+                  - gcs:
+                      remotePath: ${stagingBucketName + "/" + jobDir + "/"}
+                    mountPath: "/mnt/disks/job_dir"
+                computeResource:
+                  cpuMilli: ${cpuMilli} 
+                  memoryMib: ${memoryMib}
+                maxRetryCount: ${maxRetryCount}
+                maxRunDuration: ${maxRunDuration}
+              taskCount: 1
+              parallelism: 1
+            allocationPolicy:
+              instances:
+                - policy:
+                    machineType: ${machineTypeCPU}
+                    disks:
+                      - deviceName: "databases"
+                        existingDisk: ${refDBsDisk}
+            logsPolicy:
+              destination: CLOUD_LOGGING
+        result: createAndRunBatchJobResponse
+    - getJob:
+        call: http.get
+        args:
+          url: ${batchApiUrl + "/" + jobId}
+          auth:
+            type: OAuth2
+        result: getJobResult
+    - logState:
+        call: sys.log
+        args:
+          data: ${"Current job state " + getJobResult.body.status.state}
+   # - checkState:
+   #     switch:
+   #       - condition: ${getJobResult.body.status.state == "SUCCEEDED"}
+   #         next: returnResult
+   #       - condition: ${getJobResult.body.status.state == "FAILED"}
+   #         next: deleteBucket
+   #     next: sleep
+   # - sleep:
+   #     call: sys.sleep
+   #     args:
+   #       seconds: 10
+   #     next: getJob
+   # - deleteBucket:
+   #     call: googleapis.storage.v1.buckets.delete
+   #     args:
+   #       bucket: ${bucket}
+   # - logDeleteBucket:
+   #     call: sys.log
+   #     args:
+   #       data: ${"Deleted bucket " + bucket}
+   #     next: failExecution
+   # # You can delete the batch job or keep it for debugging
+   # # - logDeleteBatchJob:
+   # #     call: sys.log
+   # #     args:
+   # #       data: ${"Deleting the batch job " + jobId}
+   # # - deleteBatchJob:
+   # #     call: http.delete
+   # #     args:
+   # #       url: ${batchApiUrl + "/" + jobId}
+   # #       auth:
+   # #         type: OAuth2
+   # #     result: deleteBatchJob
+   # - returnResult:
+   #     return:
+   #       jobId: ${jobId}
+   #       bucket: ${bucket}
+   # - failExecution:
+   #     raise:
+   #       message: ${"The underlying batch job " + jobId + " failed"}
+# [END workflows_batch_primegen]

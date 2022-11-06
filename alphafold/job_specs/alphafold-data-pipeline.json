@@ -11,8 +11,8 @@
                                 "/runners/run_data_pipeline.py",
                                 "--fasta_path=/job_dir/fasta/T1050.fasta",
                                 "--max_template_date=2020-05-14",
-                                "--msa_output_path=/job_dir/msas",
-                                "--features_output_path=/job_dir/features"
+                                "--nouse_small_bfd",
+                                "--output_path=/job_dir"
                             ],
                             "volumes": [
                                 "/mnt/disks/alphafold:/ref_databases",
