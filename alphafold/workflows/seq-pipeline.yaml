@@ -21,7 +21,7 @@ main:
           - region: "us-central1"
           - batchApi: "batch.googleapis.com/v1"
           - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
-          - imageUri: ${"gcr.io/" + projectId + "alphafold"}
+          - imageUri: ${"gcr.io/" + projectId + "/alphafold"}
           - jobId: ${"job-alphafold-" + string(int(sys.now()))}
           - mountPathJobDir: "/mnt/disks/job"
           - mountPathRefDbs: "/mnt/disks/alphafold"
@@ -76,7 +76,7 @@ main:
                         - "--fasta_path=/mnt/disks/job_dir/sequence.fasta"
                         - ${"--max_template_date=" + maxTemplateDate}
                         - ${if(useSmallBFD, "--use_small_bfd", "--nouse_small_bfd")}
-                        - "--ouput_path=/job_dir"
+                        - "--output_path=/mnt/disks/job_dir"
                 volumes:
                   - deviceName: "databases"
                     mountPath: "/mnt/disks/ref_dbs"
@@ -111,27 +111,18 @@ main:
         call: sys.log
         args:
           data: ${"Current job state " + getJobResult.body.status.state}
-   # - checkState:
-   #     switch:
-   #       - condition: ${getJobResult.body.status.state == "SUCCEEDED"}
-   #         next: returnResult
-   #       - condition: ${getJobResult.body.status.state == "FAILED"}
-   #         next: deleteBucket
-   #     next: sleep
-   # - sleep:
-   #     call: sys.sleep
-   #     args:
-   #       seconds: 10
-   #     next: getJob
-   # - deleteBucket:
-   #     call: googleapis.storage.v1.buckets.delete
-   #     args:
-   #       bucket: ${bucket}
-   # - logDeleteBucket:
-   #     call: sys.log
-   #     args:
-   #       data: ${"Deleted bucket " + bucket}
-   #     next: failExecution
+    - checkState:
+        switch:
+          - condition: ${getJobResult.body.status.state == "SUCCEEDED"}
+            next: returnResult
+          - condition: ${getJobResult.body.status.state == "FAILED"}
+            next: failExecution 
+        next: sleep
+    - sleep:
+        call: sys.sleep
+        args:
+          seconds: 10
+        next: getJob
    # # You can delete the batch job or keep it for debugging
    # # - logDeleteBatchJob:
    # #     call: sys.log
@@ -144,11 +135,10 @@ main:
    # #       auth:
    # #         type: OAuth2
    # #     result: deleteBatchJob
-   # - returnResult:
-   #     return:
-   #       jobId: ${jobId}
-   #       bucket: ${bucket}
-   # - failExecution:
-   #     raise:
-   #       message: ${"The underlying batch job " + jobId + " failed"}
+    - returnResult:
+        return:
+          jobId: ${jobId}
+    - failExecution:
+        raise:
+          message: ${"The underlying batch job " + jobId + " failed"}
 # [END workflows_batch_primegen]
