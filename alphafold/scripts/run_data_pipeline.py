@@ -38,8 +38,16 @@ flags.DEFINE_string('mmcif_path', 'pdb_mmcif/mmcif_files', 'Uniref90 database pa
 flags.DEFINE_string('max_template_date', None, 'Max template date')
 flags.DEFINE_string('msa_output_path', None, 'MSA output_path')
 flags.DEFINE_string('features_output_path', None, 'Features ouput path')
-flags.DEFINE_bool('use_small_bfd', True, 'Use small BFD')
-flags.DEFINE_bool('run_multimer_system', False, 'Run multimer system')
+flags.DEFINE_enum('model_preset', 'monomer',
+                  ['monomer', 'monomer_casp14', 'monomer_ptm', 'multimer'],
+                  'Choose preset model configuration - the monomer model, '
+                  'the monomer model with extra ensembling, monomer model with '
+                  'pTM head, or multimer model')
+flags.DEFINE_enum('db_preset', 'full_dbs',
+                  ['full_dbs', 'reduced_dbs'],
+                  'Choose preset MSA database configuration - '
+                  'smaller genetic database config (reduced_dbs) or '
+                  'full genetic database config  (full_dbs)')
 flags.mark_flag_as_required('fasta_path')
 flags.mark_flag_as_required('max_template_date')
 flags.mark_flag_as_required('output_path')
@@ -78,11 +86,14 @@ def _main(argv):
         FLAGS.ref_dbs_mount_path, FLAGS.seqres_database_path)
     mmcif_path = os.path.join(
         FLAGS.ref_dbs_mount_path, FLAGS.mmcif_path)
+    
+    use_small_bfd = FLAGS.db_preset == 'reduced_dbs'
+    run_multimer_system = FLAGS.model_preset == 'monomer'
 
     features_dict, msas_metadata = run_data_pipeline(
         fasta_path=FLAGS.fasta_path,
-        run_multimer_system=FLAGS.run_multimer_system,
-        use_small_bfd=FLAGS.use_small_bfd,
+        run_multimer_system=run_multimer_system,
+        use_small_bfd=use_small_bfd,
         uniref90_database_path=uniref90_database_path,
         mgnify_database_path=mgnify_database_path,
         bfd_database_path=bfd_database_path,
