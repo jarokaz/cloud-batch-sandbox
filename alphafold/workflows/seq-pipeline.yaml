@@ -21,7 +21,10 @@ main:
           - imageUri: ${"gcr.io/" + projectId + "/alphafold"}
           - region: "us-central1"
           - jobId: ${"job-alphafold-" + string(int(sys.now()))}
-          - jobPath: ${args.stagingLocation + "/" + jobId} 
+          - jobPath: ${args.stagingLocation + "/" + jobId}
+          - modelParamsPath: "jk-alphafold-datasets-archive/v2.2.0" 
+          - modelPreset: "monomer"
+          - runRelax: true
     - callDataPipeline:
         call: runDataPipeline
         args:
@@ -34,7 +37,22 @@ main:
           imageUri: ${imageUri}
           region: ${region}
           projectId: ${projectId}
-        result: output
+        result: dataPipelineOutput
+    - logDataPipelineOutput:
+        call: sys.log
+        args:
+          data: ${dataPipelineOutput}
+    - callPredictRelax:
+        call: runPredictRelax
+        args:
+          featuresPath: ${dataPipelineOutput.jobPath + "/" + "features.pkl"}
+          modelParamsPath: ${modelParamsPath} 
+          outputPath: ${dataPipelineOutput.jobPath} 
+          modelPreset: ${modelPreset} 
+          runRelax: ${runRelax} 
+          imageUri: ${imageUri}
+          region: ${region}
+          projectId: ${projectId}
 
 # Subworkflows
 runDataPipeline:
@@ -52,7 +70,11 @@ runDataPipeline:
           - fastaBucket: ${text.split(fastaSequence, "/")[0]}
           - fastaObject: ${text.substring(fastaSequence, len(fastaBucket) + 1, len(fastaSequence))}
           - jobBucket: ${text.split(jobPath, "/")[0]}
-          - jobDir: ${text.substring(jobPath, len(jobBucket) + 1, len(jobPath))} 
+          - jobDir: ${text.substring(jobPath, len(jobBucket) + 1, len(jobPath))}
+    - returnMock:
+        return:
+          jobId: ${jobId}
+          jobPath: "jk-alphafold-staging/batch-jobs/job-alphafold-1667782536" 
     - logDebug:
         call: sys.log
         args:
@@ -149,7 +171,27 @@ runDataPipeline:
     - returnResult:
         return:
           jobId: ${jobId}
+          jobPath: ${jobPath}
     - failExecution:
         raise:
           message: ${"The underlying batch job " + jobId + " failed"}
-# [END workflows_batch_primegen]
+
+runPredictRelax:
+  params: [featuresPath, modelParamsPath, outputPath, modelPreset, runRelax, imageUri, projectId, region]
+  steps:
+    - init:
+        assign:
+          - batchApi: "batch.googleapis.com/v1"
+          - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
+          - machineTypeCPU: "c2-standard-16"
+          - cpuMilli: 14000
+          - memoryMib: 40000
+          - maxRetryCount: 2
+          - maxRunDuration: "7200s"
+    - logInputs:
+        call: sys.log
+        args:
+          data: ${featuresPath + " " + outputPath}
+    - returnResult:
+        return:
+          outputPath: ${outputPath}
