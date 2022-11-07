@@ -28,17 +28,27 @@ gcloud iam service-accounts create $SERVICE_ACCOUNT
 ```
 
 ```
+# Needed for Workflows to create Jobs
+# See https://cloud.google.com/batch/docs/release-notes#October_03_2022
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_NAME@jk-mlops-dev.iam.gserviceaccount.com" \
-  --role=roles/batch.jobsAdmin
+    --member serviceAccount:$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com \
+    --role roles/batch.jobsEditor
 
+# Needed for Workflows to submit Jobs
+# See https://cloud.google.com/batch/docs/release-notes#October_03_2022
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_NAME@jk-mlops-dev.iam.gserviceaccount.com" \
-  --role=roles/logging.logWriter
+    --member serviceAccount:$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com \
+    --role roles/iam.serviceAccountUser
 
+# Needed for Workflows to create buckets
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$SA_NAME@jk-mlops-dev.iam.gserviceaccount.com" \
-  --role=roles/storage.admin
+    --member serviceAccount:$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com \
+    --role roles/storage.admin
+
+# Need for Workflows to log
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member serviceAccount:$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com \
+    --role roles/logging.logWriter
 ```
 
 #### Sequential pipeline
@@ -49,6 +59,7 @@ gcloud workflows deploy af-sequential-workflow \
   --service-account=workflows-sa@jk-mlops-dev.iam.gserviceaccount.com
 
 gcloud workflows run af-sequential-workflow
+--data='{"fastaSequence":"jk-alphafold-staging/fasta/T1050.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-alphafold-staging/batch-jobs","refDBsDisk":"projects/jk-mlops-dev/zones/us-central1-a/disks/alphafold-datasets-v220","useSmallBFD":"true"}'
 ```
 
 ```
