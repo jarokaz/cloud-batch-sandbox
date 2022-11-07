@@ -18,42 +18,60 @@ main:
     - init:
         assign:
           - projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - imageUri: ${"gcr.io/" + projectId + "/alphafold"}
           - region: "us-central1"
+          - stagingLocation: "jk-alphafold-staging/batch-jobs"
+          - jobId: ${"job-alphafold-" + string(int(sys.now()))}
+          - jobPath: ${stagingLocation + "/" + jobId} 
+          - refDBsDisk: "projects/jk-mlops-dev/zones/us-central1-a/disks/alphafold-datasets-v220"
+          - fastaSequence: "jk-alphafold-staging/fasta/T1050.fasta"
+          - maxTemplateDate: "2020-05-14"
+          - useSmallBFD: true 
+    #- theend:
+    #    next: end
+    - callDataPipeline:
+        call: runDataPipeline
+        args:
+          fastaSequence: ${fastaSequence}
+          maxTemplateDate: ${maxTemplateDate}
+          jobId: ${jobId}
+          jobPath: ${jobPath}
+          refDBsDisk: ${refDBsDisk}
+          useSmallBFD: ${useSmallBFD}
+          imageUri: ${imageUri}
+          region: ${region}
+          projectId: ${projectId}
+        result: output
+
+# Subworkflows
+runDataPipeline:
+  params: [fastaSequence, maxTemplateDate, jobId, jobPath, refDBsDisk, useSmallBFD, imageUri, projectId, region]
+  steps:
+    - init:
+        assign:
           - batchApi: "batch.googleapis.com/v1"
           - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
-          - imageUri: ${"gcr.io/" + projectId + "/alphafold"}
-          - jobId: ${"job-alphafold-" + string(int(sys.now()))}
-          - mountPathJobDir: "/mnt/disks/job"
-          - mountPathRefDbs: "/mnt/disks/alphafold"
-          - refDBsDeviceName: "databases"
-          - stagingBucketName: "jk-alphafold-staging"
-          - jobDir: ${"batch-jobs/" + jobId} 
           - machineTypeCPU: "c2-standard-16"
           - cpuMilli: 14000
           - memoryMib: 40000
           - maxRetryCount: 2
           - maxRunDuration: "7200s"
-          - machineTypeGPU: "a2-highgpu-1g"
-          - refDBsDisk: "projects/jk-mlops-dev/zones/us-central1-a/disks/alphafold-datasets-v220"
-          - fastaSequence: "jk-alphafold-staging/fasta/T1050.fasta"
           - fastaBucket: ${text.split(fastaSequence, "/")[0]}
-          - fastaObject: ${text.substring(fastaSequence, len(text.split(fastaSequence, "/")[0]) + 1, len(fastaSequence))}
-          - maxTemplateDate: "2020-05-14"
-          - useSmallBFD: true 
+          - fastaObject: ${text.substring(fastaSequence, len(fastaBucket) + 1, len(fastaSequence))}
+          - jobBucket: ${text.split(jobPath, "/")[0]}
+          - jobDir: ${text.substring(jobPath, len(jobBucket) + 1, len(jobPath))} 
     - logDebug:
         call: sys.log
         args:
           data: ${"Running data pipeline on:" + "gs://" + fastaBucket + "/" + fastaObject} 
-    #- theend:
-    #    next: end
     - copySequence:
         call: googleapis.storage.v1.objects.copy
         args:
-            destinationBucket: ${text.url_encode(stagingBucketName)} 
+            destinationBucket: ${text.url_encode(jobBucket)} 
             destinationObject: ${text.url_encode(jobDir + "/" + "sequence.fasta")}
             sourceBucket: ${text.url_encode(fastaBucket)}
             sourceObject: ${text.url_encode(fastaObject)}
-    - runDataPipelineJob:
+    - runDataPipelineCloudBatchJob:
         call: http.post
         args:
           url: ${batchApiUrl}
@@ -81,7 +99,7 @@ main:
                   - deviceName: "databases"
                     mountPath: "/mnt/disks/ref_dbs"
                   - gcs:
-                      remotePath: ${stagingBucketName + "/" + jobDir + "/"}
+                      remotePath: ${jobPath + "/"}
                     mountPath: "/mnt/disks/job_dir"
                 computeResource:
                   cpuMilli: ${cpuMilli} 
