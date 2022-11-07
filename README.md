@@ -58,8 +58,8 @@ gcloud workflows deploy af-sequential-workflow \
   --source=seq-pipeline.yaml \
   --service-account=workflows-sa@jk-mlops-dev.iam.gserviceaccount.com
 
-gcloud workflows run af-sequential-workflow
---data='{"fastaSequence":"jk-alphafold-staging/fasta/T1050.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-alphafold-staging/batch-jobs","refDBsDisk":"projects/jk-mlops-dev/zones/us-central1-a/disks/alphafold-datasets-v220","useSmallBFD":"true"}'
+gcloud workflows run af-sequential-workflow \
+--data='{"fastaSequence":"jk-alphafold-staging/fasta/T1050.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-alphafold-staging/batch-jobs","refDBsDisk":"projects/jk-mlops-dev/zones/us-central1-a/disks/alphafold-datasets-v220","useSmallBFD":true}'
 ```
 
 ```
