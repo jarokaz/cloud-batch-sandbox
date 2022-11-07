@@ -20,24 +20,17 @@ main:
           - projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
           - imageUri: ${"gcr.io/" + projectId + "/alphafold"}
           - region: "us-central1"
-          - stagingLocation: "jk-alphafold-staging/batch-jobs"
           - jobId: ${"job-alphafold-" + string(int(sys.now()))}
-          - jobPath: ${stagingLocation + "/" + jobId} 
-          - refDBsDisk: "projects/jk-mlops-dev/zones/us-central1-a/disks/alphafold-datasets-v220"
-          - fastaSequence: "jk-alphafold-staging/fasta/T1050.fasta"
-          - maxTemplateDate: "2020-05-14"
-          - useSmallBFD: true 
-    #- theend:
-    #    next: end
+          - jobPath: ${args.stagingLocation + "/" + jobId} 
     - callDataPipeline:
         call: runDataPipeline
         args:
-          fastaSequence: ${fastaSequence}
-          maxTemplateDate: ${maxTemplateDate}
+          fastaSequence: ${args.fastaSequence}
+          maxTemplateDate: ${args.maxTemplateDate}
           jobId: ${jobId}
           jobPath: ${jobPath}
-          refDBsDisk: ${refDBsDisk}
-          useSmallBFD: ${useSmallBFD}
+          refDBsDisk: ${args.refDBsDisk}
+          useSmallBFD: ${args.useSmallBFD}
           imageUri: ${imageUri}
           region: ${region}
           projectId: ${projectId}
