@@ -46,21 +46,22 @@ main:
     - callPredictRelax:
         call: runPredictRelax
         args:
-          featuresPath: ${dataPipelineOutput.jobPath + "/" + "features.pkl"}
-          modelParamsPath: ${modelParamsPath} 
-          outputPath: ${dataPipelineOutput.jobPath} 
-          modelPreset: ${modelPreset} 
-          runRelax: ${runRelax} 
+          jobPath: ${dataPipelineOutput.jobPath}
+          jobId: ${jobId}
+          modelParamsPath: ${args.modelParamsPath} 
+          modelPreset: ${args.modelPreset} 
+          runRelax: ${args.runRelax} 
           imageUri: ${imageUri}
           region: ${region}
           projectId: ${projectId}
 
 # Subworkflows
 runDataPipeline:
-  params: [fastaSequence, modelPreset, dbPreset, maxTemplateDate, jobId, jobPath, refDBsDisk, useSmallBFD, imageUri, projectId, region]
+  params: [fastaSequence, modelPreset, dbPreset, maxTemplateDate, jobId, jobPath, refDBsDisk,  imageUri, projectId, region]
   steps:
     - init:
         assign:
+          - batchJobId: ${jobId + "-data-pipeline"}
           - batchApi: "batch.googleapis.com/v1"
           - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
           - machineTypeCPU: "c2-standard-16"
@@ -92,7 +93,7 @@ runDataPipeline:
         args:
           url: ${batchApiUrl}
           query:
-            job_id: ${jobId}
+            job_id: ${batchJobId}
           headers:
             Content-Type: application/json
           auth:
@@ -138,7 +139,7 @@ runDataPipeline:
     - getJob:
         call: http.get
         args:
-          url: ${batchApiUrl + "/" + jobId}
+          url: ${batchApiUrl + "/" + batchJobId}
           auth:
             type: OAuth2
         result: getJobResult
@@ -158,42 +159,113 @@ runDataPipeline:
         args:
           seconds: 10
         next: getJob
-   # # You can delete the batch job or keep it for debugging
-   # # - logDeleteBatchJob:
-   # #     call: sys.log
-   # #     args:
-   # #       data: ${"Deleting the batch job " + jobId}
-   # # - deleteBatchJob:
-   # #     call: http.delete
-   # #     args:
-   # #       url: ${batchApiUrl + "/" + jobId}
-   # #       auth:
-   # #         type: OAuth2
-   # #     result: deleteBatchJob
     - returnResult:
         return:
-          jobId: ${jobId}
           jobPath: ${jobPath}
     - failExecution:
         raise:
-          message: ${"The underlying batch job " + jobId + " failed"}
+          message: ${"The underlying batch job " + batchJobId + " failed"}
 
 runPredictRelax:
-  params: [featuresPath, modelParamsPath, outputPath, modelPreset, runRelax, imageUri, projectId, region]
+  params: [jobPath, jobId, modelParamsPath, modelPreset, runRelax, imageUri, projectId, region, randomSeed: Null]
   steps:
     - init:
         assign:
+          - batchJobId: ${jobId + "-predict-relax"}
           - batchApi: "batch.googleapis.com/v1"
           - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
-          - machineTypeCPU: "c2-standard-16"
-          - cpuMilli: 14000
-          - memoryMib: 40000
+          - machineTypeGPU: "n1-standard-8"
+          - gpuType: "nvidia-tesla-t4"
+          - gpuCount: 1
+          - cpuMilli: 8000
+          - memoryMib: 30000
           - maxRetryCount: 2
           - maxRunDuration: "7200s"
     - logInputs:
         call: sys.log
         args:
-          data: ${featuresPath + " " + outputPath}
+          data: ${jobPath + " " + modelParamsPath}
+    - runPredictRelaxCloudBatchJob: 
+        call: http.post
+        args:
+          url: ${batchApiUrl}
+          query:
+            job_id: ${batchJobId}
+          headers:
+            Content-Type: application/json
+          auth:
+            type: OAuth2
+          body:
+            taskGroups:
+              taskSpec:
+                runnables:
+                  - container:
+                      imageUri: ${imageUri}
+                      entrypoint: "python"
+                      commands:
+                        - "/runners/run_predict_relax.py"
+                        - "--job_path=/mnt/disks/job_dir"
+                        - "--model_params_path=/mnt/disks/params"
+                        - ${"--model_preset=" + modelPreset}
+                        - ${if(randomSeed, "--random_seed=" + string(randomSeed), "")}
+                      options: "--privileged"
+                      volumes:
+                        - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"
+                        - "/var/lib/nvidia/bin:/usr/local/nvidia/bin"
+                        - "/mnt/disks/params:/mnt/disks/params"
+                        - "/mnt/disks/job_dir:/mnt/disks/job_dir"
+                volumes:
+                  - gcs: 
+                      remotePath: ${modelParamsPath + "/"}
+                    mountPath: "/mnt/disks/params"
+                  - gcs:
+                      remotePath: ${jobPath + "/"}
+                    mountPath: "/mnt/disks/job_dir"
+                computeResource:
+                  cpuMilli: ${cpuMilli} 
+                  memoryMib: ${memoryMib}
+                maxRetryCount: ${maxRetryCount}
+                maxRunDuration: ${maxRunDuration}
+              taskCount: 1
+              parallelism: 1
+            allocationPolicy:
+              instances:
+                - policy:
+                    machineType: ${machineTypeGPU}
+                    accelerators:
+                      - type: ${gpuType}
+                        count: ${gpuCount}
+                  installGpuDrivers: true
+
+            logsPolicy:
+              destination: CLOUD_LOGGING
+        result: createAndRunBatchJobResponse
+    - getJob:
+        call: http.get
+        args:
+          url: ${batchApiUrl + "/" + batchJobId}
+          auth:
+            type: OAuth2
+        result: getJobResult
+    - logState:
+        call: sys.log
+        args:
+          data: ${"Current job state " + getJobResult.body.status.state}
+    - checkState:
+        switch:
+          - condition: ${getJobResult.body.status.state == "SUCCEEDED"}
+            next: returnResult
+          - condition: ${getJobResult.body.status.state == "FAILED"}
+            next: failExecution 
+        next: sleep
+    - sleep:
+        call: sys.sleep
+        args:
+          seconds: 10
+        next: getJob
     - returnResult:
         return:
-          outputPath: ${outputPath}
+          jobPath: ${jobPath}
+    - failExecution:
+        raise:
+          message: ${"The underlying batch job " + batchJobId + " failed"}

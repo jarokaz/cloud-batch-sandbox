@@ -23,13 +23,13 @@ from absl import flags
 from absl import app
 from absl import logging
 
+from config import FEATURES_FILE
 
 from alphafold.model import config
 from alphafold_utils import predict_relax 
 
-flags.DEFINE_string('model_features_path', None, 'A path to input features')
+flags.DEFINE_string('job_path', None, 'A path to the folder with the output from feature engineering')
 flags.DEFINE_string('model_params_path', None, 'A path to model parameters')
-flags.DEFINE_string('output_path', None, 'A path to a directory that will store results')
 flags.DEFINE_enum('model_preset', 'monomer',
                   ['monomer', 'monomer_casp14', 'monomer_ptm', 'multimer'],
                   'Choose preset model configuration - the monomer model, '
@@ -45,37 +45,29 @@ flags.DEFINE_integer('num_multimer_predictions_per_model', 5, 'How many '
                      'generated per model. E.g. if this is 2 and there are 5 '
                      'models then there will be 10 predictions per input. '
                      'Note: this FLAG only applies if model_preset=multimer')
-flags.DEFINE_boolean('use_precomputed_msas', False, 'Whether to read MSAs that '
-                     'have been written to disk instead of running the MSA '
-                     'tools. The MSA files are looked up in the output '
-                     'directory, so it must stay the same between multiple '
-                     'runs that are to reuse the MSAs. WARNING: This will not '
-                     'check if the sequence, database or configuration have '
-                     'changed.')
 flags.DEFINE_boolean('run_relax', True, 'Whether to run the final relaxation '
                      'step on the predicted models. Turning relax off might '
                      'result in predictions with distracting stereochemical '
                      'violations but might help in case you are having issues '
                      'with the relaxation stage.')
-flags.DEFINE_boolean('use_gpu_relax', None, 'Whether to relax on GPU. '
+flags.DEFINE_boolean('use_gpu_relax', True, 'Whether to relax on GPU. '
                      'Relax on GPU can be much faster than CPU, so it is '
                      'recommended to enable if possible. GPUs must be available'
                      ' if this setting is enabled.')
-flags.mark_flag_as_required('model_features_path')
+flags.mark_flag_as_required('job_path')
 flags.mark_flag_as_required('model_params_path')
-flags.mark_flag_as_required('output_path')
 FLAGS = flags.FLAGS
 
 
 def _main(argv):
 
-    logging.info(f'Running prediction and relaxation using features: {FLAGS.features_path}')  
-    logging.info(f'Results stored to: {FLAGS.output_path}')  
+    logging.info(f'Running prediction and relaxation using features in: {FLAGS.job_path}')  
+    logging.info(f'Results stored to: {FLAGS.job_path}') 
 
     run_multimer_system = 'multimer' == FLAGS.model_preset
     num_ensemble = 8 if FLAGS.model_preset == 'monomer_casp14' else 1
     num_predictions_per_model = FLAGS.num_multimer_predictions_per_model if FLAGS.model_preset == 'multimer' else 1
-    models = config.MODEL_PRESETS[FLAGS.model.preset]
+    models = config.MODEL_PRESETS[FLAGS.model_preset]
 
     if FLAGS.random_seed is None:
         random_seed = random.randrange(
@@ -94,22 +86,21 @@ def _main(argv):
             })
             random_seed += 1
 
-
-    os.makedirs(FLAGS.output_path, exist_ok=True)
+    model_features_path = os.path.join(FLAGS.job_path, FEATURES_FILE)
 
     logging.info(f'Starting predictions on {prediction_runners} ...')
     t0 = time.time()
 
     ranking_confidences = predict_relax(
-        model_features_path=FLAGS.model_features_path,
+        model_features_path=model_features_path,
         model_params_path=FLAGS.model_params_path,
         prediction_runners=prediction_runners,
         num_ensemble=num_ensemble,
         run_multimer_system=run_multimer_system,
         run_relax=FLAGS.run_relax,
-        raw_prediction_path=FLAGS.output_path,
-        unrelaxed_protein_path=FLAGS.output_path,
-        relaxed_protein_path=FLAGS.output_path
+        raw_prediction_path=FLAGS.job_path,
+        unrelaxed_protein_path=FLAGS.job_path,
+        relaxed_protein_path=FLAGS.job_path
     )  
 
     t1 = time.time()

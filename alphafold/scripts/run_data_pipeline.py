@@ -20,6 +20,8 @@ from absl import flags
 from absl import app
 from absl import logging
 
+from config import MSA_OUTPUT_FOLDER, FEATURES_FILE
+
 from alphafold_utils import run_data_pipeline
 
 flags.DEFINE_string('fasta_path', None, 'A path to sequence')
@@ -53,8 +55,6 @@ flags.mark_flag_as_required('max_template_date')
 flags.mark_flag_as_required('output_path')
 FLAGS = flags.FLAGS
 
-MSA_OUTPUT_FOLDER = 'msas'
-FEATURES_FILE = 'features.pkl'
 
 def _main(argv):
     
