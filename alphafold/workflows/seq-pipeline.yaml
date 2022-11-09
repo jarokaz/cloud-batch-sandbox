@@ -115,12 +115,10 @@ runDataPipeline:
           name: ${runRecordName + "/steps/data_pipeline"}
           body:
             fields: ${stepRecord}
-    #- returnMock:
-    #    return:
-    #      jobId: ${jobId}
-    #      jobPath: "jk-alphafold-staging/batch-jobs/job-alphafold-1667782536" 
-    # - breakpoint1:
-    #    next: end
+    - returnMock:
+        return:
+          featuresFilePath: ${featuresFileName}
+          jobPath: "jk-alphafold-staging/batch-jobs/job-alphafold-1668034517" 
     - copySequence:
         call: googleapis.storage.v1.objects.copy
         args:

@@ -58,8 +58,11 @@ flags.DEFINE_boolean('use_gpu_relax', True, 'Whether to relax on GPU. '
                      'recommended to enable if possible. GPUs must be available'
                      ' if this setting is enabled.')
 flags.mark_flag_as_required('model_params_path')
-flags.mark_flag_as_required('artifacts_output_path')
+flags.mark_flag_as_required('input_features_path')
 flags.mark_flag_as_required('metadata_output_path')
+flags.mark_flag_as_required('raw_predictions_output_path')
+flags.mark_flag_as_required('relaxed_proteins_output_path')
+flags.mark_flag_as_required('unrelaxed_proteins_output_path')
 FLAGS = flags.FLAGS
 
 
@@ -94,13 +97,11 @@ def _main(argv):
             })
             random_seed += 1
 
-    model_features_path = os.path.join(FLAGS.artifacts_output_path, FEATURES_FILE)
-
     logging.info(f'Starting predictions on {prediction_runners} ...')
     t0 = time.time()
 
     ranking_confidences = predict_relax(
-        model_features_path=model_features_path,
+        model_features_path=FLAGS.input_features_path,
         model_params_path=FLAGS.model_params_path,
         prediction_runners=prediction_runners,
         num_ensemble=num_ensemble,
