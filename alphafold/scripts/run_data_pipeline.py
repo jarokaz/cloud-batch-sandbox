@@ -67,7 +67,7 @@ def _main(argv):
     msa_output_path = os.path.join(FLAGS.artifacts_output_path, MSA_OUTPUT_FOLDER)
     os.makedirs(msa_output_path, exist_ok=True)
     features_output_path = os.path.join(FLAGS.artifacts_output_path, FEATURES_FILE)
-    os.makedirs(os.path.dirname(FLAGS.metadata_output_path, exist_ok=True))
+    os.makedirs(os.path.dirname(FLAGS.metadata_output_path), exist_ok=True))
 
     uniref90_database_path = os.path.join(
         FLAGS.ref_dbs_mount_path, FLAGS.uniref90_database_path)
