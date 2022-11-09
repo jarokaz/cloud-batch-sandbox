@@ -49,6 +49,11 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member serviceAccount:$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com \
     --role roles/logging.logWriter
+
+# Need for Workflows to use Firestore
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member serviceAccount:$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com \
+    --role roles/datastore.owner
 ```
 
 #### Sequential pipeline
@@ -59,7 +64,7 @@ gcloud workflows deploy af-sequential-workflow \
   --service-account=workflows-sa@jk-mlops-dev.iam.gserviceaccount.com
 
 gcloud workflows run af-sequential-workflow \
---data='{"fastaSequence":"jk-alphafold-staging/fasta/T1050.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-alphafold-staging/batch-jobs","refDBsDisk":"projects/jk-mlops-dev/zones/us-central1-a/disks/alphafold-datasets-v220","modelPreset":"monomer","dbPreset":"reduced_dbs","modelParamsPath":"jk-alphafold-datasets-archive/v2.2.0","runRelax":true}'
+--data='{"fastaSequence":"jk-alphafold-staging/fasta/T1050.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-alphafold-staging/batch-jobs","refDBsDisk":"projects/jk-mlops-dev/zones/us-central1-a/disks/alphafold-datasets-v220","modelPreset":"monomer","dbPreset":"reduced_dbs","modelParamsPath":"jk-alphafold-datasets-archive/v2.2.0","runRelax":true,"experimentRecord":"AlphaFoldExperiments/T1050-Experiment"}'
 ```
 
 ```

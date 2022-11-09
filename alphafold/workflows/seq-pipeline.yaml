@@ -23,8 +23,26 @@ main:
           - jobId: ${"job-alphafold-" + string(int(sys.now()))}
           - jobPath: ${args.stagingLocation + "/" + jobId}
           - modelParamsPath: "jk-alphafold-datasets-archive/v2.2.0" 
-          - modelPreset: "monomer"
           - runRelax: true
+          - runsCollectionId: ""
+          - runRecord:
+              ModelPreset: 
+                stringValue: ${args.modelPreset}
+              Sequence: 
+                stringValue: $args.fastaSequence}
+              DbPreset: 
+                stringValue: ${args.dbPreset}
+              JobPath: 
+                stringValue: ${jobPath}
+    - startRunLog:
+        call: googleapis.firestore.v1.projects.databases.documents.createDocument
+        args:
+          collectionId: ${args.runsCollection}
+          parent: ${"projects/"+projectId+"/databases/(default)/documents"}
+          documentId: ${jobId}
+          body:
+            fields: ${runRecord}
+        result: runRecordDocument
     - callDataPipeline:
         call: runDataPipeline
         args:
@@ -38,6 +56,7 @@ main:
           imageUri: ${imageUri}
           region: ${region}
           projectId: ${projectId}
+          runRecordName: ${runRecordDocument.name}
         result: dataPipelineOutput
     - logDataPipelineOutput:
         call: sys.log
@@ -54,10 +73,16 @@ main:
           imageUri: ${imageUri}
           region: ${region}
           projectId: ${projectId}
+          runRecordName: ${runRecordDocument.name}
+        result: predictRelaxResult
+    - logCompletion:
+        call: sys.log
+        args:
+          data: ${predictRelaxResult}
 
-# Subworkflows
+
 runDataPipeline:
-  params: [fastaSequence, modelPreset, dbPreset, maxTemplateDate, jobId, jobPath, refDBsDisk,  imageUri, projectId, region]
+  params: [fastaSequence, modelPreset, dbPreset, maxTemplateDate, jobId, jobPath, refDBsDisk,  imageUri, projectId, region, runRecordName]
   steps:
     - init:
         assign:
@@ -73,14 +98,28 @@ runDataPipeline:
           - fastaObject: ${text.substring(fastaSequence, len(fastaBucket) + 1, len(fastaSequence))}
           - jobBucket: ${text.split(jobPath, "/")[0]}
           - jobDir: ${text.substring(jobPath, len(jobBucket) + 1, len(jobPath))}
-    - returnMock:
-        return:
-          jobId: ${jobId}
-          jobPath: "jk-alphafold-staging/batch-jobs/job-alphafold-1667782536" 
+          - metadataFileName: "data_pipeline.json"
+          - stepRecord:
+              ArtifacsPath: 
+                stringValue: ${jobPath}
+              MetadataPath: 
+                stringValue: ${jobPath + "/" + metadataFileName}
     - logDebug:
         call: sys.log
         args:
-          data: ${"Running data pipeline on:" + "gs://" + fastaBucket + "/" + fastaObject} 
+          data: ${"Running data pipeline on gs://" + fastaBucket + "/" + fastaObject} 
+    - updateRunRecord:
+        call: googleapis.firestore.v1.projects.databases.documents.patch
+        args:
+          name: ${runRecordName + "/steps/data_pipeline"}
+          body:
+            fields: ${stepRecord}
+    #- returnMock:
+    #    return:
+    #      jobId: ${jobId}
+    #      jobPath: "jk-alphafold-staging/batch-jobs/job-alphafold-1667782536" 
+    # - breakpoint1:
+    #    next: end
     - copySequence:
         call: googleapis.storage.v1.objects.copy
         args:
@@ -112,7 +151,8 @@ runDataPipeline:
                         - ${"--max_template_date=" + maxTemplateDate}
                         - ${"--model_preset=" + modelPreset}
                         - ${"--db_preset=" + dbPreset}
-                        - "--output_path=/mnt/disks/job_dir"
+                        - "--artifacts_output_path=/mnt/disks/job_dir"
+                        - ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
                 volumes:
                   - deviceName: "databases"
                     mountPath: "/mnt/disks/ref_dbs"
@@ -150,7 +190,7 @@ runDataPipeline:
     - checkState:
         switch:
           - condition: ${getJobResult.body.status.state == "SUCCEEDED"}
-            next: returnResult
+            next: returnResult 
           - condition: ${getJobResult.body.status.state == "FAILED"}
             next: failExecution 
         next: sleep
@@ -167,7 +207,7 @@ runDataPipeline:
           message: ${"The underlying batch job " + batchJobId + " failed"}
 
 runPredictRelax:
-  params: [jobPath, jobId, modelParamsPath, modelPreset, runRelax, imageUri, projectId, region, randomSeed: Null]
+  params: [jobPath, jobId, modelParamsPath, modelPreset, runRelax, imageUri, projectId, region, runRecordName, randomSeed: Null]
   steps:
     - init:
         assign:
@@ -181,10 +221,21 @@ runPredictRelax:
           - memoryMib: 30000
           - maxRetryCount: 2
           - maxRunDuration: "7200s"
-    - logInputs:
-        call: sys.log
+          - metadataFileName: "predict_relax.json"
+          - stepRecord:
+              ArtifacsPath: 
+                stringValue: ${jobPath}
+              MetadataPath: 
+                stringValue: ${jobPath + "/" + metadataFileName}
+              ModelParamsPath:
+                stringValue: ${modelParamsPath + "/params"}
+
+    - updateRunRecord:
+        call: googleapis.firestore.v1.projects.databases.documents.patch
         args:
-          data: ${jobPath + " " + modelParamsPath}
+          name: ${runRecordName + "/steps/data_pipeline"}
+          body:
+            fields: ${stepRecord}
     - runPredictRelaxCloudBatchJob: 
         call: http.post
         args:
@@ -204,10 +255,11 @@ runPredictRelax:
                       entrypoint: "python"
                       commands:
                         - "/runners/run_predict_relax.py"
-                        - "--job_path=/mnt/disks/job_dir"
                         - "--model_params_path=/mnt/disks/params"
                         - ${"--model_preset=" + modelPreset}
                         - ${if(randomSeed, "--random_seed=" + string(randomSeed), "")}
+                        - "--artifacts_output_path=/mnt/disks/job_dir"
+                        - ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
                       options: "--privileged"
                       volumes:
                         - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"

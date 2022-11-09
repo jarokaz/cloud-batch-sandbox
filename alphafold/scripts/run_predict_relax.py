@@ -28,7 +28,8 @@ from config import FEATURES_FILE
 from alphafold.model import config
 from alphafold_utils import predict_relax 
 
-flags.DEFINE_string('job_path', None, 'A path to the folder with the output from feature engineering')
+flags.DEFINE_string('artifacts_output_path', None, 'A path to a directory that will store artifacts')
+flags.DEFINE_string('metadata_output_path', None, 'A path to a metadata output file')
 flags.DEFINE_string('model_params_path', None, 'A path to model parameters')
 flags.DEFINE_enum('model_preset', 'monomer',
                   ['monomer', 'monomer_casp14', 'monomer_ptm', 'multimer'],
@@ -54,15 +55,15 @@ flags.DEFINE_boolean('use_gpu_relax', True, 'Whether to relax on GPU. '
                      'Relax on GPU can be much faster than CPU, so it is '
                      'recommended to enable if possible. GPUs must be available'
                      ' if this setting is enabled.')
-flags.mark_flag_as_required('job_path')
 flags.mark_flag_as_required('model_params_path')
+flags.mark_flag_as_required('artifacts_output_path')
+flags.mark_flag_as_required('metadata_output_path')
 FLAGS = flags.FLAGS
 
 
 def _main(argv):
 
-    logging.info(f'Running prediction and relaxation using features in: {FLAGS.job_path}')  
-    logging.info(f'Results stored to: {FLAGS.job_path}') 
+    logging.info(f'Running prediction and relaxation using features in: {FLAGS.artifacts_output_path}')  
 
     run_multimer_system = 'multimer' == FLAGS.model_preset
     num_ensemble = 8 if FLAGS.model_preset == 'monomer_casp14' else 1
@@ -86,7 +87,7 @@ def _main(argv):
             })
             random_seed += 1
 
-    model_features_path = os.path.join(FLAGS.job_path, FEATURES_FILE)
+    model_features_path = os.path.join(FLAGS.artifacts_output_path, FEATURES_FILE)
 
     logging.info(f'Starting predictions on {prediction_runners} ...')
     t0 = time.time()
@@ -98,9 +99,9 @@ def _main(argv):
         num_ensemble=num_ensemble,
         run_multimer_system=run_multimer_system,
         run_relax=FLAGS.run_relax,
-        raw_prediction_path=FLAGS.job_path,
-        unrelaxed_protein_path=FLAGS.job_path,
-        relaxed_protein_path=FLAGS.job_path
+        raw_prediction_path=FLAGS.artifacts_output_path,
+        unrelaxed_protein_path=FLAGS.artifacts_output_path,
+        relaxed_protein_path=FLAGS.artifacts_output_path
     )  
 
     t1 = time.time()
