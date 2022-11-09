@@ -58,14 +58,11 @@ main:
           projectId: ${projectId}
           runRecordName: ${runRecordDocument.name}
         result: dataPipelineOutput
-    - logDataPipelineOutput:
-        call: sys.log
-        args:
-          data: ${dataPipelineOutput}
     - callPredictRelax:
         call: runPredictRelax
         args:
           jobPath: ${dataPipelineOutput.jobPath}
+          inputFeaturesPath: ${dataPipelineOutput.featuresFilePath}
           jobId: ${jobId}
           modelParamsPath: ${args.modelParamsPath} 
           modelPreset: ${args.modelPreset} 
@@ -99,11 +96,15 @@ runDataPipeline:
           - jobBucket: ${text.split(jobPath, "/")[0]}
           - jobDir: ${text.substring(jobPath, len(jobBucket) + 1, len(jobPath))}
           - metadataFileName: "data_pipeline.json"
+          - msasFolder: "msas"
+          - featuresFileName: "features.pkl"
           - stepRecord:
-              ArtifacsPath: 
-                stringValue: ${jobPath}
-              MetadataPath: 
+              featuresPath: 
+                stringValue: ${jobPath + "/" + featuresFileName}
+              metadataPath: 
                 stringValue: ${jobPath + "/" + metadataFileName}
+              msasPath:
+                stringValue: ${jobPath + "/" + msasFolder}
     - logDebug:
         call: sys.log
         args:
@@ -146,12 +147,13 @@ runDataPipeline:
                       entrypoint: "python"
                       commands:
                         - "/runners/run_data_pipeline.py"
-                        - "--ref_dbs_mount_path=/mnt/disks/ref_dbs"
-                        - "--fasta_path=/mnt/disks/job_dir/sequence.fasta"
+                        - "--ref_dbs_root_path=/mnt/disks/ref_dbs"
+                        - "--fasta_input_path=/mnt/disks/job_dir/sequence.fasta"
                         - ${"--max_template_date=" + maxTemplateDate}
                         - ${"--model_preset=" + modelPreset}
                         - ${"--db_preset=" + dbPreset}
-                        - "--artifacts_output_path=/mnt/disks/job_dir"
+                        - ${"--msas_output_path=/mnt/disks/job_dir/" + msasFolder}
+                        - ${"--features_output_path=/mnt/disks/job_dir/" + featuresFileName}
                         - ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
                 volumes:
                   - deviceName: "databases"
@@ -202,12 +204,13 @@ runDataPipeline:
     - returnResult:
         return:
           jobPath: ${jobPath}
+          featuresFilePath: ${featuresFileName}
     - failExecution:
         raise:
           message: ${"The underlying batch job " + batchJobId + " failed"}
 
 runPredictRelax:
-  params: [jobPath, jobId, modelParamsPath, modelPreset, runRelax, imageUri, projectId, region, runRecordName, randomSeed: Null]
+  params: [inputFeaturesPath, jobPath, jobId, modelParamsPath, modelPreset, runRelax, imageUri, projectId, region, runRecordName, randomSeed: Null]
   steps:
     - init:
         assign:
@@ -222,13 +225,22 @@ runPredictRelax:
           - maxRetryCount: 2
           - maxRunDuration: "7200s"
           - metadataFileName: "predict_relax.json"
+          - rawPredictionsFolder: "raw_predictions"
+          - unrelaxedProteinsFolder: "unrelaxed_proteins"
+          - relaxedProteinsFolder: "relaxed_proteins"
           - stepRecord:
-              ArtifacsPath: 
-                stringValue: ${jobPath}
-              MetadataPath: 
+              rawPredictionsPath: 
+                stringValue: ${jobPath + "/" + rawPredictionsFolder}
+              unrelaxedProteinsPath: 
+                stringValue: ${jobPath + "/" + unrelaxedProteinsFolder}
+              relaxedProteinsPath: 
+                stringValue: ${jobPath + "/" + relaxedProteinsFolder}
+              metadataPath: 
                 stringValue: ${jobPath + "/" + metadataFileName}
-              ModelParamsPath:
+              modelParamsPath:
                 stringValue: ${modelParamsPath + "/params"}
+              inputFeaturesPath:
+                stringValue: ${inputFeaturesPath}
 
     - updateRunRecord:
         call: googleapis.firestore.v1.projects.databases.documents.patch
@@ -258,8 +270,12 @@ runPredictRelax:
                         - "--model_params_path=/mnt/disks/params"
                         - ${"--model_preset=" + modelPreset}
                         - ${if(randomSeed, "--random_seed=" + string(randomSeed), "")}
-                        - "--artifacts_output_path=/mnt/disks/job_dir"
+                        - ${"--raw_predictions_output_path=/mnt/disks/job_dir/" + rawPredictionsFolder}
+                        - ${"--unrelaxed_proteins_output_path=/mnt/disks/job_dir/" + unrelaxedProteinsFolder}
+                        - ${"--relaxed_proteins_output_path=/mnt/disks/job_dir/" + relaxedProteinsFolder}
                         - ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
+                        - ${"--input_features_path=/mnt/disks/job_dir/" + inputFeaturesPath}
+  
                       options: "--privileged"
                       volumes:
                         - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"

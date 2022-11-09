@@ -14,6 +14,7 @@
 
 """A utility to submit a Vertex Training T5X job."""
 
+import json
 import os
 import random
 import time
@@ -23,13 +24,14 @@ from absl import flags
 from absl import app
 from absl import logging
 
-from config import FEATURES_FILE
-
 from alphafold.model import config
 from alphafold_utils import predict_relax 
 
-flags.DEFINE_string('artifacts_output_path', None, 'A path to a directory that will store artifacts')
 flags.DEFINE_string('metadata_output_path', None, 'A path to a metadata output file')
+flags.DEFINE_string('raw_predictions_output_path', None, 'A path to a directory that will store raw predictions')
+flags.DEFINE_string('unrelaxed_proteins_output_path', None, 'A path to a directory that will store unrelaxed proteins')
+flags.DEFINE_string('relaxed_proteins_output_path', None, 'A path to a directory that will store relaxed proteins')
+flags.DEFINE_string('input_features_path', None, 'A path to input features')
 flags.DEFINE_string('model_params_path', None, 'A path to model parameters')
 flags.DEFINE_enum('model_preset', 'monomer',
                   ['monomer', 'monomer_casp14', 'monomer_ptm', 'multimer'],
@@ -63,7 +65,12 @@ FLAGS = flags.FLAGS
 
 def _main(argv):
 
-    logging.info(f'Running prediction and relaxation using features in: {FLAGS.artifacts_output_path}')  
+    logging.info(f'Running prediction and relaxation using features in: {FLAGS.input_features_path}')  
+
+    os.makedirs(FLAGS.raw_predictions_output_path, exist_ok=True)
+    os.makedirs(FLAGS.unrelaxed_proteins_output_path, exist_ok=True)
+    os.makedirs(FLAGS.relaxed_proteins_output_path, exist_ok=True)
+    os.makedirs(os.path.dirname(FLAGS.metadata_output_path), exist_ok=True) 
 
     run_multimer_system = 'multimer' == FLAGS.model_preset
     num_ensemble = 8 if FLAGS.model_preset == 'monomer_casp14' else 1
@@ -99,11 +106,13 @@ def _main(argv):
         num_ensemble=num_ensemble,
         run_multimer_system=run_multimer_system,
         run_relax=FLAGS.run_relax,
-        raw_prediction_path=FLAGS.artifacts_output_path,
-        unrelaxed_protein_path=FLAGS.artifacts_output_path,
-        relaxed_protein_path=FLAGS.artifacts_output_path
+        raw_prediction_path=FLAGS.raw_predictions_output_path,
+        unrelaxed_protein_path=FLAGS.unrelaxed_proteins_output_path,
+        relaxed_protein_path=FLAGS.relaxed_proteins_output_path
     )  
 
+    with open(FLAGS.metadata_output_path, 'w') as f:
+        json.dump(ranking_confidences, f, indent=4)
     t1 = time.time()
     logging.info(f'Model predictions completed. Elapsed time: {t1-t0}')     
 
