@@ -62,7 +62,6 @@ FLAGS = flags.FLAGS
 def _main(argv):
     
     logging.info(f'Running data pipeline on: {FLAGS.fasta_path}')  
-    logging.info(f'Results stored to: {FLAGS.output_path}')  
 
     os.makedirs(FLAGS.artifacts_output_path, exist_ok=True)
     msa_output_path = os.path.join(FLAGS.artifacts_output_path, MSA_OUTPUT_FOLDER)
