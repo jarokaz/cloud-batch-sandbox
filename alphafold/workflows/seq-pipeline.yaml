@@ -22,18 +22,25 @@ main:
           - region: "us-central1"
           - jobId: ${"job-alphafold-" + string(int(sys.now()))}
           - jobPath: ${args.stagingLocation + "/" + jobId}
+          - sequencePath: ${jobPath + "/" + "sequence.fasta"}
           - modelParamsPath: "jk-alphafold-datasets-archive/v2.2.0" 
-          - runRelax: true
-          - runsCollectionId: ""
           - runRecord:
               ModelPreset: 
                 stringValue: ${args.modelPreset}
               Sequence: 
-                stringValue: $args.fastaSequence}
+                stringValue: ${args.fastaSequence}
               DbPreset: 
                 stringValue: ${args.dbPreset}
               JobPath: 
                 stringValue: ${jobPath}
+    - copySequence:
+        call: googleapis.storage.v1.objects.copy
+        args:
+            destinationBucket: ${text.url_encode(text.split(sequencePath, "/")[0])} 
+            destinationObject: ${text.url_encode(text.substring(sequencePath, len(text.split(sequencePath, "/")[0]) + 1, len(sequencePath)))}
+            sourceBucket: ${text.url_encode(text.split(args.fastaSequence, "/")[0])}
+            sourceObject: ${text.url_encode(text.substring(args.fastaSequence, len(text.split(args.fastaSequence, "/")[0]) + 1, len(args.fastaSequence)))}
+
     - startRunLog:
         call: googleapis.firestore.v1.projects.databases.documents.createDocument
         args:
@@ -43,10 +50,11 @@ main:
           body:
             fields: ${runRecord}
         result: runRecordDocument
+
     - callDataPipeline:
         call: runDataPipeline
         args:
-          fastaSequence: ${args.fastaSequence}
+          fastaSequence: ${sequencePath}
           maxTemplateDate: ${args.maxTemplateDate}
           jobId: ${jobId}
           jobPath: ${jobPath}
@@ -58,10 +66,11 @@ main:
           projectId: ${projectId}
           runRecordName: ${runRecordDocument.name}
         result: dataPipelineOutput
+
     - callPredictRelax:
         call: runPredictRelax
         args:
-          jobPath: ${dataPipelineOutput.jobPath}
+          jobPath: ${jobPath}
           inputFeaturesPath: ${dataPipelineOutput.featuresFilePath}
           jobId: ${jobId}
           modelParamsPath: ${args.modelParamsPath} 
@@ -79,7 +88,7 @@ main:
 
 
 runDataPipeline:
-  params: [fastaSequence, modelPreset, dbPreset, maxTemplateDate, jobId, jobPath, refDBsDisk,  imageUri, projectId, region, runRecordName]
+  params: [jobId, fastaSequence, jobPath, modelPreset, dbPreset, maxTemplateDate, refDBsDisk,  imageUri, projectId, region, runRecordName]
   steps:
     - init:
         assign:
@@ -91,13 +100,11 @@ runDataPipeline:
           - memoryMib: 40000
           - maxRetryCount: 2
           - maxRunDuration: "7200s"
-          - fastaBucket: ${text.split(fastaSequence, "/")[0]}
-          - fastaObject: ${text.substring(fastaSequence, len(fastaBucket) + 1, len(fastaSequence))}
-          - jobBucket: ${text.split(jobPath, "/")[0]}
-          - jobDir: ${text.substring(jobPath, len(jobBucket) + 1, len(jobPath))}
           - metadataFileName: "data_pipeline.json"
           - msasFolder: "msas"
           - featuresFileName: "features.pkl"
+          - sequenceBucket: ${text.split(fastaSequence, "/")[0]}
+          - sequenceObject: ${text.substring(fastaSequence, len(text.split(fastaSequence, "/")[0]) + 1, len(fastaSequence))}
           - stepRecord:
               featuresPath: 
                 stringValue: ${jobPath + "/" + featuresFileName}
@@ -105,27 +112,19 @@ runDataPipeline:
                 stringValue: ${jobPath + "/" + metadataFileName}
               msasPath:
                 stringValue: ${jobPath + "/" + msasFolder}
-    - logDebug:
-        call: sys.log
-        args:
-          data: ${"Running data pipeline on gs://" + fastaBucket + "/" + fastaObject} 
+
     - updateRunRecord:
         call: googleapis.firestore.v1.projects.databases.documents.patch
         args:
           name: ${runRecordName + "/steps/data_pipeline"}
           body:
             fields: ${stepRecord}
-    - returnMock:
-        return:
-          featuresFilePath: ${featuresFileName}
-          jobPath: "jk-alphafold-staging/batch-jobs/job-alphafold-1668034517" 
-    - copySequence:
-        call: googleapis.storage.v1.objects.copy
-        args:
-            destinationBucket: ${text.url_encode(jobBucket)} 
-            destinationObject: ${text.url_encode(jobDir + "/" + "sequence.fasta")}
-            sourceBucket: ${text.url_encode(fastaBucket)}
-            sourceObject: ${text.url_encode(fastaObject)}
+
+   # - mockReturn:
+   #     return:
+   #       featuresFilePath: "jk-alphafold-staging/batch-jobs/job-alphafold-1668106672/features.pkl"        
+
+
     - runDataPipelineCloudBatchJob:
         call: http.post
         args:
@@ -146,7 +145,7 @@ runDataPipeline:
                       commands:
                         - "/runners/run_data_pipeline.py"
                         - "--ref_dbs_root_path=/mnt/disks/ref_dbs"
-                        - "--fasta_input_path=/mnt/disks/job_dir/sequence.fasta"
+                        - ${"--fasta_input_path=/mnt/disks/input/" + sequenceObject}
                         - ${"--max_template_date=" + maxTemplateDate}
                         - ${"--model_preset=" + modelPreset}
                         - ${"--db_preset=" + dbPreset}
@@ -159,6 +158,9 @@ runDataPipeline:
                   - gcs:
                       remotePath: ${jobPath + "/"}
                     mountPath: "/mnt/disks/job_dir"
+                  - gcs:
+                      remotePath: ${sequenceBucket}
+                    mountPath: "/mnt/disks/input"
                 computeResource:
                   cpuMilli: ${cpuMilli} 
                   memoryMib: ${memoryMib}
@@ -201,14 +203,14 @@ runDataPipeline:
         next: getJob
     - returnResult:
         return:
-          jobPath: ${jobPath}
-          featuresFilePath: ${featuresFileName}
+          featuresFilePath: ${jobPath + "/" + featuresFileName}
+          metadataFilePath: ${jobPath + "/" + metadataFileName}
     - failExecution:
         raise:
           message: ${"The underlying batch job " + batchJobId + " failed"}
 
 runPredictRelax:
-  params: [inputFeaturesPath, jobPath, jobId, modelParamsPath, modelPreset, runRelax, imageUri, projectId, region, runRecordName, randomSeed: Null]
+  params: [jobId, inputFeaturesPath, modelParamsPath,  jobPath,  modelPreset, runRelax, imageUri, projectId, region, runRecordName, randomSeed: Null]
   steps:
     - init:
         assign:
@@ -226,6 +228,8 @@ runPredictRelax:
           - rawPredictionsFolder: "raw_predictions"
           - unrelaxedProteinsFolder: "unrelaxed_proteins"
           - relaxedProteinsFolder: "relaxed_proteins"
+          - featuresBucket: ${text.split(inputFeaturesPath, "/")[0]}
+          - featuresObject: ${text.substring(inputFeaturesPath, len(text.split(inputFeaturesPath, "/")[0]) + 1, len(inputFeaturesPath))}
           - stepRecord:
               rawPredictionsPath: 
                 stringValue: ${jobPath + "/" + rawPredictionsFolder}
@@ -272,7 +276,7 @@ runPredictRelax:
                         - ${"--unrelaxed_proteins_output_path=/mnt/disks/job_dir/" + unrelaxedProteinsFolder}
                         - ${"--relaxed_proteins_output_path=/mnt/disks/job_dir/" + relaxedProteinsFolder}
                         - ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
-                        - ${"--input_features_path=/mnt/disks/job_dir/" + inputFeaturesPath}
+                        - ${"--input_features_path=/mnt/disks/features/" + featuresObject}
   
                       options: "--privileged"
                       volumes:
@@ -280,6 +284,7 @@ runPredictRelax:
                         - "/var/lib/nvidia/bin:/usr/local/nvidia/bin"
                         - "/mnt/disks/params:/mnt/disks/params"
                         - "/mnt/disks/job_dir:/mnt/disks/job_dir"
+                        - "/mnt/disks/features:/mnt/disks/features"
                 volumes:
                   - gcs: 
                       remotePath: ${modelParamsPath + "/"}
@@ -287,6 +292,9 @@ runPredictRelax:
                   - gcs:
                       remotePath: ${jobPath + "/"}
                     mountPath: "/mnt/disks/job_dir"
+                  - gcs:
+                      remotePath: ${featuresBucket}
+                    mountPath: "/mnt/disks/features"
                 computeResource:
                   cpuMilli: ${cpuMilli} 
                   memoryMib: ${memoryMib}

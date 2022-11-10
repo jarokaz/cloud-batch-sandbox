@@ -329,8 +329,8 @@ def predict_relax(
     else:
         amber_relaxer = None
 
-    # Run the predictions
     feature_dict = _load_features(model_features_path)
+
     timings = {}
     unrelaxed_pdbs = {}
     relaxed_pdbs = {}

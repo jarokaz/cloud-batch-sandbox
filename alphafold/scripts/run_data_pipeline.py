@@ -59,7 +59,7 @@ FLAGS = flags.FLAGS
 
 def _main(argv):
     
-    logging.info(f'Running data pipeline on: {FLAGS.fasta_input_path}')  
+    logging.info(f'Running data pipeline on: {FLAGS.fasta_input_path}') 
 
     os.makedirs(FLAGS.msas_output_path, exist_ok=True)
     os.makedirs(os.path.dirname(FLAGS.features_output_path), exist_ok=True)
@@ -87,7 +87,7 @@ def _main(argv):
         FLAGS.ref_dbs_root_path, FLAGS.mmcif_path)
     
     use_small_bfd = FLAGS.db_preset == 'reduced_dbs'
-    run_multimer_system = FLAGS.model_preset == 'monomer'
+    run_multimer_system = FLAGS.model_preset == 'multimer'
 
     features_dict, msas_metadata = run_data_pipeline(
         fasta_path=FLAGS.fasta_input_path,
