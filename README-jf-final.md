@@ -72,7 +72,23 @@ gcloud workflows deploy af-sequential-workflow \
   --service-account=workflows-sa@$PROJECT_ID.iam.gserviceaccount.com
 
 gcloud workflows run af-sequential-workflow \
---data='{"fastaSequence":"jk-aff-bucket/fasta/T1050.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-aff-bucket/batch-jobs","modelPreset":"monomer","dbPreset":"reduced_dbs","modelParamsPath":"jk-alphafold-datasets-archive/v2.2.0","runRelax":true,"runsCollection":"AlphaFoldExperiments/T1050-Experiment/InferenceRuns"}'
+--data='{"fastaSequence":"jk-aff-bucket/fasta/T1050.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-aff-bucket/batch-jobs","modelPreset":"monomer","dbPreset":"reduced_dbs","modelParamsPath":"jk-alphafold-datasets-archive/v2.2.0","runRelax":true,"runsCollection":"AlphaFoldExperiments/T1050-Experiment/InferenceRuns","numMultimerPredictionsPermodel":5}'
+```
+
+```
+gcloud workflows executions describe-last
+```
+
+
+#### Parallel pipeline
+
+```
+gcloud workflows deploy af-parallel-workflow \
+  --source=parallel-pipeline-nfs.yaml \
+  --service-account=workflows-sa@$PROJECT_ID.iam.gserviceaccount.com
+
+gcloud workflows run af-parallel-workflow \
+--data='{"fastaSequence":"jk-aff-bucket/fasta/T1050.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-aff-bucket/batch-jobs","modelPreset":"monomer","dbPreset":"reduced_dbs","modelParamsPath":"jk-alphafold-datasets-archive/v2.2.0","runRelax":true,"runsCollection":"AlphaFoldExperiments/T1050-Experiment/InferenceRuns","numMultimerPredictionsPerModel":5,"randomSeed":123456,"parallelism":2}'
 ```
 
 ```

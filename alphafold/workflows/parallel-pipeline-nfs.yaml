@@ -1,0 +1,385 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# [START workflows_batch_primegen]
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - imageUri: ${"gcr.io/" + projectId + "/alphafold"}
+          - region: "us-central1"
+          - jobId: ${"job-alphafold-" + string(int(sys.now()))}
+          - jobPath: ${args.stagingLocation + "/" + jobId}
+          - sequencePath: ${jobPath + "/" + "sequence.fasta"}
+          - modelParamsPath: "jk-alphafold-datasets-archive/v2.2.0" 
+          - nfsConfig:
+              ip_address: "10.130.0.2"
+              nfs_path: "/datasets"
+          - networkConfig:
+              network: "projects/jk-af-final/global/networks/jk-aff-network"
+              subnetwork: "projects/jk-af-final/regions/us-central1/subnetworks/jk-aff-subnet"
+          - runRecord:
+              ModelPreset: 
+                stringValue: ${args.modelPreset}
+              Sequence: 
+                stringValue: ${args.fastaSequence}
+              DbPreset: 
+                stringValue: ${args.dbPreset}
+              jobPath: 
+                stringValue: ${jobPath}
+              numMultimerPredictionsPerModel:
+                integerValue: ${args.numMultimerPredictionsPerModel}
+              runRelax: 
+                booleanValue: ${args.runRelax}
+    - copySequence:
+        call: googleapis.storage.v1.objects.copy
+        args:
+            destinationBucket: ${text.url_encode(text.split(sequencePath, "/")[0])} 
+            destinationObject: ${text.url_encode(text.substring(sequencePath, len(text.split(sequencePath, "/")[0]) + 1, len(sequencePath)))}
+            sourceBucket: ${text.url_encode(text.split(args.fastaSequence, "/")[0])}
+            sourceObject: ${text.url_encode(text.substring(args.fastaSequence, len(text.split(args.fastaSequence, "/")[0]) + 1, len(args.fastaSequence)))}
+
+    - startRunLog:
+        call: googleapis.firestore.v1.projects.databases.documents.createDocument
+        args:
+          collectionId: ${args.runsCollection}
+          parent: ${"projects/"+projectId+"/databases/(default)/documents"}
+          documentId: ${jobId}
+          body:
+            fields: ${runRecord}
+        result: runRecordDocument
+
+    - callDataPipeline:
+        call: runDataPipeline
+        args:
+          fastaSequence: ${sequencePath}
+          maxTemplateDate: ${args.maxTemplateDate}
+          jobId: ${jobId}
+          jobPath: ${jobPath}
+          nfsConfig: ${nfsConfig}
+          networkConfig: ${networkConfig}
+          modelPreset: ${args.modelPreset}
+          dbPreset: ${args.dbPreset}
+          imageUri: ${imageUri}
+          region: ${region}
+          projectId: ${projectId}
+          runRecordName: ${runRecordDocument.name}
+        result: dataPipelineOutput
+
+    - callPredictRelax:
+        call: runPredictRelax
+        args:
+          jobPath: ${jobPath}
+          inputFeaturesPath: ${dataPipelineOutput.featuresFilePath}
+          jobId: ${jobId}
+          modelParamsPath: ${args.modelParamsPath} 
+          modelPreset: ${args.modelPreset} 
+          runRelax: ${args.runRelax} 
+          imageUri: ${imageUri}
+          region: ${region}
+          projectId: ${projectId}
+          runRecordName: ${runRecordDocument.name}
+          numMultimerPredictionsPerModel: ${args.numMultimerPredictionsPerModel}
+          randomSeed: ${args.randomSeed}
+          parallelism: ${args.parallelism}
+        result: predictRelaxResult
+        
+    #- logCompletion:
+    #    call: sys.log
+    #    args:
+    #      data: ${predictRelaxResult}
+
+
+runDataPipeline:
+  params: [jobId, fastaSequence, jobPath, modelPreset, dbPreset, maxTemplateDate, nfsConfig, networkConfig, imageUri, projectId, region, runRecordName]
+  steps:
+    - init:
+        assign:
+          - batchJobId: ${jobId + "-data-pipeline"}
+          - batchApi: "batch.googleapis.com/v1"
+          - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
+          - machineTypeCPU: "c2-standard-16"
+          - cpuMilli: 14000
+          - memoryMib: 40000
+          - maxRetryCount: 2
+          - maxRunDuration: "7200s"
+          - metadataFileName: "data_pipeline.json"
+          - msasFolder: "msas"
+          - featuresFileName: "features.pkl"
+          - sequenceBucket: ${text.split(fastaSequence, "/")[0]}
+          - sequenceObject: ${text.substring(fastaSequence, len(text.split(fastaSequence, "/")[0]) + 1, len(fastaSequence))}
+          - stepRecord:
+              featuresPath: 
+                stringValue: ${jobPath + "/" + featuresFileName}
+              metadataPath: 
+                stringValue: ${jobPath + "/" + metadataFileName}
+              msasPath:
+                stringValue: ${jobPath + "/" + msasFolder}
+
+    - updateRunRecord:
+        call: googleapis.firestore.v1.projects.databases.documents.patch
+        args:
+          name: ${runRecordName + "/steps/data_pipeline"}
+          body:
+            fields: ${stepRecord}
+
+   # - mockReturn:
+   #     return:
+   #       featuresFilePath: "jk-alphafold-staging/batch-jobs/job-alphafold-1668106672/features.pkl"        
+    - mockReturn:
+        return:
+          featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
+          metadataFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/predict_relax.json"
+
+    - runDataPipelineCloudBatchJob:
+        call: http.post
+        args:
+          url: ${batchApiUrl}
+          query:
+            job_id: ${batchJobId}
+          headers:
+            Content-Type: application/json
+          auth:
+            type: OAuth2
+          body:
+            taskGroups:
+              taskSpec:
+                runnables:
+                  - container:
+                      imageUri: ${imageUri}
+                      entrypoint: "python"
+                      commands:
+                        - "/runners/run_data_pipeline.py"
+                        - "--ref_dbs_root_path=/mnt/disks/ref_dbs"
+                        - ${"--fasta_input_path=/mnt/disks/input/" + sequenceObject}
+                        - ${"--max_template_date=" + maxTemplateDate}
+                        - ${"--model_preset=" + modelPreset}
+                        - ${"--db_preset=" + dbPreset}
+                        - ${"--msas_output_path=/mnt/disks/job_dir/" + msasFolder}
+                        - ${"--features_output_path=/mnt/disks/job_dir/" + featuresFileName}
+                        - ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
+                volumes:
+                  - nfs: 
+                      server: ${nfsConfig.ip_address}
+                      remotePath: ${nfsConfig.nfs_path}
+                    mountPath: "/mnt/disks/ref_dbs"
+                  - gcs:
+                      remotePath: ${jobPath + "/"}
+                    mountPath: "/mnt/disks/job_dir"
+                  - gcs:
+                      remotePath: ${sequenceBucket}
+                    mountPath: "/mnt/disks/input"
+                computeResource:
+                  cpuMilli: ${cpuMilli} 
+                  memoryMib: ${memoryMib}
+                maxRetryCount: ${maxRetryCount}
+                maxRunDuration: ${maxRunDuration}
+              taskCount: 1
+              parallelism: 1
+            allocationPolicy:
+              instances:
+                - policy:
+                    machineType: ${machineTypeCPU}
+              network:
+                networkInterfaces:
+                  - network: ${networkConfig.network}
+                    subnetwork: ${networkConfig.subnetwork}
+            logsPolicy:
+              destination: CLOUD_LOGGING
+        result: createAndRunBatchJobResponse
+    - getJob:
+        call: http.get
+        args:
+          url: ${batchApiUrl + "/" + batchJobId}
+          auth:
+            type: OAuth2
+        result: getJobResult
+    - logState:
+        call: sys.log
+        args:
+          data: ${"Current job state " + getJobResult.body.status.state}
+    - checkState:
+        switch:
+          - condition: ${getJobResult.body.status.state == "SUCCEEDED"}
+            next: returnResult 
+          - condition: ${getJobResult.body.status.state == "FAILED"}
+            next: failExecution 
+        next: sleep
+    - sleep:
+        call: sys.sleep
+        args:
+          seconds: 10
+        next: getJob
+    - returnResult:
+        return:
+          featuresFilePath: ${jobPath + "/" + featuresFileName}
+          metadataFilePath: ${jobPath + "/" + metadataFileName}
+    - failExecution:
+        raise:
+          message: ${"The underlying batch job " + batchJobId + " failed"}
+
+runPredictRelax:
+  params: [jobId, inputFeaturesPath, modelParamsPath,  jobPath,  modelPreset, runRelax, imageUri, projectId, region, runRecordName, numMultimerPredictionsPerModel, randomSeed, parallelism]
+  steps:
+    - init:
+        assign:
+          - batchJobId: ${jobId + "-predict-relax"}
+          - batchApi: "batch.googleapis.com/v1"
+          - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
+          - machineTypeGPU: "n1-standard-8"
+          - gpuType: "nvidia-tesla-t4"
+          - gpuCount: 1
+          - cpuMilli: 8000
+          - memoryMib: 30000
+          - maxRetryCount: 2
+          - maxRunDuration: "7200s"
+          - metadataFileName: "predict_relax.json"
+          - rawPredictionsFolder: "raw_predictions"
+          - unrelaxedProteinsFolder: "unrelaxed_proteins"
+          - relaxedProteinsFolder: "relaxed_proteins"
+          - featuresBucket: ${text.split(inputFeaturesPath, "/")[0]}
+          - featuresObject: ${text.substring(inputFeaturesPath, len(text.split(inputFeaturesPath, "/")[0]) + 1, len(inputFeaturesPath))}
+          - stepRecord:
+              rawPredictionsPath: 
+                stringValue: ${jobPath + "/" + rawPredictionsFolder}
+              unrelaxedProteinsPath: 
+                stringValue: ${jobPath + "/" + unrelaxedProteinsFolder}
+              relaxedProteinsPath: 
+                stringValue: ${jobPath + "/" + relaxedProteinsFolder}
+              metadataPath: 
+                stringValue: ${jobPath + "/" + metadataFileName}
+              modelParamsPath:
+                stringValue: ${modelParamsPath + "/params"}
+              inputFeaturesPath:
+                stringValue: ${inputFeaturesPath}
+          - taskEnvirons: []
+          - numModels: 5
+          - numPredictionsPerModel: ${if(modelPreset=="multimer", numMultimerPredictionsPerModel, 1)}
+    - initPredictionRunners:
+        for:
+          value: runnerIndex
+          range: ${[0, numModels * numPredictionsPerModel - 1]}
+          steps:
+            - updateTaskEnviron:
+                assign:
+                  - taskEnviron: 
+                      variables:
+                        MODEL_INDEX: ${string(runnerIndex // numPredictionsPerModel)}
+                        PRED_INDEX: ${string(runnerIndex % numPredictionsPerModel)}
+                        RANDOM_SEED: ${string(randomSeed + runnerIndex)}
+                  - taskEnvirons: ${list.concat(taskEnvirons, taskEnviron)}
+
+    - updateRunRecord:
+        call: googleapis.firestore.v1.projects.databases.documents.patch
+        args:
+          name: ${runRecordName + "/steps/data_pipeline"}
+          body:
+            fields: ${stepRecord}
+    - runPredictRelaxCloudBatchJob: 
+        call: http.post
+        args:
+          url: ${batchApiUrl}
+          query:
+            job_id: ${batchJobId}
+          headers:
+            Content-Type: application/json
+          auth:
+            type: OAuth2
+          body:
+            taskGroups:
+              taskSpec:
+                runnables:
+                  - container:
+                      imageUri: ${imageUri}
+                      entrypoint: "python"
+                      commands:
+                        - "/runners/run_predict.py"
+                        - "--model_params_path=/mnt/disks/params"
+                        - ${"--model_preset=" + modelPreset}
+                        - ${"--model_index=$MODEL_INDEX"}
+                        - ${"--prediction_index=$PRED_INDEX"}
+                        - ${"--random_seed=$RANDOM_SEED"}
+                        - ${"--raw_predictions_output_path=/mnt/disks/job_dir/" + rawPredictionsFolder}
+                        - ${"--unrelaxed_proteins_output_path=/mnt/disks/job_dir/" + unrelaxedProteinsFolder}
+                        - ${"--relaxed_proteins_output_path=/mnt/disks/job_dir/" + relaxedProteinsFolder}
+                        - ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
+                        - ${"--input_features_path=/mnt/disks/features/" + featuresObject}
+  
+                      options: "--privileged"
+                      volumes:
+                        - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"
+                        - "/var/lib/nvidia/bin:/usr/local/nvidia/bin"
+                        - "/mnt/disks/params:/mnt/disks/params"
+                        - "/mnt/disks/job_dir:/mnt/disks/job_dir"
+                        - "/mnt/disks/features:/mnt/disks/features"
+                volumes:
+                  - gcs: 
+                      remotePath: ${modelParamsPath + "/"}
+                    mountPath: "/mnt/disks/params"
+                  - gcs:
+                      remotePath: ${jobPath + "/"}
+                    mountPath: "/mnt/disks/job_dir"
+                  - gcs:
+                      remotePath: ${featuresBucket}
+                    mountPath: "/mnt/disks/features"
+                computeResource:
+                  cpuMilli: ${cpuMilli} 
+                  memoryMib: ${memoryMib}
+                maxRetryCount: ${maxRetryCount}
+                maxRunDuration: ${maxRunDuration}
+              taskCount: ${numModels * numPredictionsPerModel}
+              taskEnvironments: ${taskEnvirons}
+              parallelism: ${parallelism}
+            allocationPolicy:
+              instances:
+                - policy:
+                    machineType: ${machineTypeGPU}
+                    accelerators:
+                      - type: ${gpuType}
+                        count: ${gpuCount}
+                  installGpuDrivers: true
+
+            logsPolicy:
+              destination: CLOUD_LOGGING
+        result: createAndRunBatchJobResponse
+    - getJob:
+        call: http.get
+        args:
+          url: ${batchApiUrl + "/" + batchJobId}
+          auth:
+            type: OAuth2
+        result: getJobResult
+    - logState:
+        call: sys.log
+        args:
+          data: ${"Current job state " + getJobResult.body.status.state}
+    - checkState:
+        switch:
+          - condition: ${getJobResult.body.status.state == "SUCCEEDED"}
+            next: returnResult
+          - condition: ${getJobResult.body.status.state == "FAILED"}
+            next: failExecution 
+        next: sleep
+    - sleep:
+        call: sys.sleep
+        args:
+          seconds: 10
+        next: getJob
+    - returnResult:
+        return:
+          jobPath: ${jobPath}
+    - failExecution:
+        raise:
+          message: ${"The underlying batch job " + batchJobId + " failed"}
