@@ -138,10 +138,10 @@ runDataPipeline:
    # - mockReturn:
    #     return:
    #       featuresFilePath: "jk-alphafold-staging/batch-jobs/job-alphafold-1668106672/features.pkl"        
-    - mockReturn:
-        return:
-          featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
-          metadataFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/predict_relax.json"
+   # - mockReturn:
+   #     return:
+   #       featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
+   #       metadataFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/predict_relax.json"
 
     - runDataPipelineCloudBatchJob:
         call: http.post
@@ -159,17 +159,18 @@ runDataPipeline:
                 runnables:
                   - container:
                       imageUri: ${imageUri}
-                      entrypoint: "python"
                       commands:
-                        - "/runners/run_data_pipeline.py"
-                        - "--ref_dbs_root_path=/mnt/disks/ref_dbs"
-                        - ${"--fasta_input_path=/mnt/disks/input/" + sequenceObject}
-                        - ${"--max_template_date=" + maxTemplateDate}
-                        - ${"--model_preset=" + modelPreset}
-                        - ${"--db_preset=" + dbPreset}
-                        - ${"--msas_output_path=/mnt/disks/job_dir/" + msasFolder}
-                        - ${"--features_output_path=/mnt/disks/job_dir/" + featuresFileName}
-                        - ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
+                        - "data_pipeline"
+                    environment:
+                      variables:
+                        FASTA_INPUT_PATH: ${"/mnt/disks/input/" + sequenceObject}
+                        MSAS_OUTPUT_PATH: ${"--msas_output_path=/mnt/disks/job_dir/" + msasFolder}
+                        FEATURES_OUTPUT_PATH: ${"--features_output_path=/mnt/disks/job_dir/" + featuresFileName}
+                        METADATA_OUTPUT_PATH: ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
+                        MODEL_PRESET: ${modelPreset}
+                        DB_PRESET: ${dbPreset}
+                        MAX_TEMPLATE_DATE: ${maxTemplateDate}
+                        REF_DBS_ROOT_PATH: "/mnt/disks/ref_dbs"
                 volumes:
                   - nfs: 
                       server: ${nfsConfig.ip_address}
@@ -279,6 +280,12 @@ runPredictRelax:
                         MODEL_INDEX: ${string(runnerIndex // numPredictionsPerModel)}
                         PRED_INDEX: ${string(runnerIndex % numPredictionsPerModel)}
                         RANDOM_SEED: ${string(randomSeed + runnerIndex)}
+                        MODEL_PARAMS_PATH: "/mnt/disk/params"
+                        INPUT_FEATURES_PATH: ${"/mnt/disks/features" + featuresObject}
+                        RAW_PREDICTION_OUTPUT_PATH: ${"/mnt/disks/job_dir/" + rawPredictionsFolder}
+                        UNRELAXED_PROTEINS_OUTPUT_PATH: ${"/mnt/disks/job_dir/" + unrelaxedProteinsFolder}
+                        METADATA_OUTPUT_PATH: ${"/mnt/disks/job_dir" + metadataFileName}
+                        MODEL_PRESET: ${modelPreset}
                   - taskEnvirons: ${list.concat(taskEnvirons, taskEnviron)}
 
     - updateRunRecord:
@@ -303,20 +310,8 @@ runPredictRelax:
                 runnables:
                   - container:
                       imageUri: ${imageUri}
-                      entrypoint: "python"
                       commands:
-                        - "/runners/run_predict.py"
-                        - "--model_params_path=/mnt/disks/params"
-                        - ${"--model_preset=" + modelPreset}
-                        - ${"--model_index=$MODEL_INDEX"}
-                        - ${"--prediction_index=$PRED_INDEX"}
-                        - ${"--random_seed=$RANDOM_SEED"}
-                        - ${"--raw_predictions_output_path=/mnt/disks/job_dir/" + rawPredictionsFolder}
-                        - ${"--unrelaxed_proteins_output_path=/mnt/disks/job_dir/" + unrelaxedProteinsFolder}
-                        - ${"--relaxed_proteins_output_path=/mnt/disks/job_dir/" + relaxedProteinsFolder}
-                        - ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
-                        - ${"--input_features_path=/mnt/disks/features/" + featuresObject}
-  
+                        - "predict"
                       options: "--privileged"
                       volumes:
                         - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"

@@ -27,7 +27,7 @@ flags.DEFINE_string('fasta_input_path', None, 'A path to sequence')
 flags.DEFINE_string('msas_output_path', None, 'A path to a directory that will store msas')
 flags.DEFINE_string('features_output_path', None, 'A path to a features file')
 flags.DEFINE_string('metadata_output_path', None, 'A path to a metadata output file')
-flags.DEFINE_string('ref_dbs_root_path', '/ref_databases', 'Mount path to reference dbs')
+flags.DEFINE_string('ref_dbs_root_path', None, 'Mount path to reference dbs')
 flags.DEFINE_string('uniref90_database_path', 'uniref90/uniref90.fasta', 'Uniref90 database path')
 flags.DEFINE_string('mgnify_database_path', 'mgnify/mgy_clusters_2018_12.fa', 'Mgnify database path')
 flags.DEFINE_string('bfd_database_path', 'bfd/bfd_metaclust_clu_complete_id30_c90_final_seq.sorted_opt', 'BFD database path')
@@ -54,6 +54,7 @@ flags.mark_flag_as_required('max_template_date')
 flags.mark_flag_as_required('msas_output_path')
 flags.mark_flag_as_required('features_output_path')
 flags.mark_flag_as_required('metadata_output_path')
+flags.mark_flag_as_required('ref_dbs_root_path')
 FLAGS = flags.FLAGS
 
 

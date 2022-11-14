@@ -31,7 +31,7 @@ flags.DEFINE_string('input_features_path', None, 'A path to input features')
 flags.DEFINE_string('model_params_path', None, 'A path to model parameters')
 flags.DEFINE_string('metadata_output_path', None, 'A path to a metadata output file')
 flags.DEFINE_string('raw_predictions_output_path', None, 'A path to a raw prediction file')
-flags.DEFINE_string('unrelaxed_proteins_path', None, 'A path to an unrelaxed protein path')
+flags.DEFINE_string('unrelaxed_proteins_output_path', None, 'A path to an unrelaxed protein path')
 
 flags.DEFINE_enum('model_preset', 'monomer',
                   ['monomer', 'monomer_casp14', 'monomer_ptm', 'multimer'],
@@ -47,7 +47,7 @@ flags.mark_flag_as_required('model_params_path')
 flags.mark_flag_as_required('input_features_path')
 flags.mark_flag_as_required('metadata_output_path')
 flags.mark_flag_as_required('raw_predictions_output_path')
-flags.mark_flag_as_required('unrelaxed_proteins_path')
+flags.mark_flag_as_required('unrelaxed_proteins_output_path')
 flags.mark_flag_as_required('model_index')
 flags.mark_flag_as_required('prediction_index')
 flags.mark_flag_as_required('random_seed')                     
@@ -57,39 +57,37 @@ FLAGS = flags.FLAGS
 
 def _main(argv):
                             
-    logging.info(f'Model index: {FLAGS.model_index}')
-    logging.info(f'Prediction index: {FLAGS.prediction_index}')
-    logging.info(f'Random seed: {FLAGS.random_seed}')
-    return              
-               
-    os.makedirs(os.path.dirname(FLAGS.raw_predictions=_output_path), exist_ok=True)
-    os.makedirs(os.path.dirname(FLAGS.unrelaxed_protein_output_path), exist_ok=True)
+    
+    os.makedirs(os.path.dirname(FLAGS.raw_predictions_output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(FLAGS.unrelaxed_proteins_output_path), exist_ok=True)
     os.makedirs(os.path.dirname(FLAGS.metadata_output_path), exist_ok=True) 
-    raw_prediction_path = "tbd"
-    unrelaxed_protein_path = "tbd"
+
 
     run_multimer_system = 'multimer' == FLAGS.model_preset
     num_ensemble = 8 if FLAGS.model_preset == 'monomer_casp14' else 1
-    model_name = config.MODEL_PRESETS[FLAGS.model_preset][FLAGS.model_index]
+    model_name = config.MODEL_PRESETS[FLAGS.model_preset][model_index]
+    raw_prediction_path = os.path.join(FLAGS.raw_predictions_output_path, f'result_{model_name}_pred_{pred_index}.pkl')
+    unrelaxed_protein_path = os.path.join(FLAGS.unrelaxed_proteins_output_path, f'unrelaxed_{model_name}_pred_{pred_index}.pkl')
                             
-    logging.info(f'Starting model prediction {prediction_index} using model {model_name}...')
+    logging.info(f'Starting model prediction {pred_index} using model {model_name}...')
     t0 = time.time()
 
-    prediction_result = alphafold_predict(
-        model_features_path=model_features.path,
-        model_params_path=model_params.path,
+    prediction_result = predict(
+        model_features_path=FLAGS.input_features_path,
+        model_params_path=FLAGS.model_params_path,
         model_name=model_name,
         num_ensemble=num_ensemble,
         run_multimer_system=run_multimer_system,
-        random_seed=FLAGS.random_seed,
+        random_seed=random_seed,
         raw_prediction_path=raw_prediction_path,
         unrelaxed_protein_path=unrelaxed_protein_path
     )
 
     prediction_metadata = {
         'model_name': model_name,
-        '
+        'ranking_confidence': prediction_result['ranking_confidence'],
     }
+    
     with open(FLAGS.metadata_output_path, 'w') as f:
         json.dump(prediction_metadata, f, indent=4)
                             
