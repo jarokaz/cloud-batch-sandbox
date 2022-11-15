@@ -96,10 +96,6 @@ main:
           parallelism: ${args.parallelism}
         result: predictRelaxResult
         
-    #- logCompletion:
-    #    call: sys.log
-    #    args:
-    #      data: ${predictRelaxResult}
 
 
 runDataPipeline:
@@ -134,14 +130,6 @@ runDataPipeline:
           name: ${runRecordName + "/steps/data_pipeline"}
           body:
             fields: ${stepRecord}
-
-   # - mockReturn:
-   #     return:
-   #       featuresFilePath: "jk-alphafold-staging/batch-jobs/job-alphafold-1668106672/features.pkl"        
-   # - mockReturn:
-   #     return:
-   #       featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
-   #       metadataFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/predict_relax.json"
 
     - runDataPipelineCloudBatchJob:
         call: http.post
