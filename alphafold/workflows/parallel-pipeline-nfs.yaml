@@ -143,6 +143,9 @@ runDataPipeline:
                 stringValue: ${jobPath + "/" + metadataFileName}
               msasPath:
                 stringValue: ${jobPath + "/" + msasFolder}
+          - refDbsMountPath: "/mnt/disks/ref_dbs"
+          - jobDirMountPath: "/mnt/disks/job_dir"
+          - inputDirMountPath: "/mnt/disks/input"
 
     - updateRunRecord:
         call: googleapis.firestore.v1.projects.databases.documents.patch
@@ -176,25 +179,25 @@ runDataPipeline:
                         - "/runners/run_data_pipeline.py"
                     environment:
                       variables:
-                        FASTA_INPUT_PATH: ${"/mnt/disks/input/" + sequenceObject}
+                        FASTA_INPUT_PATH: ${inputDirMountPath + "/" + sequenceObject}
                         MSAS_OUTPUT_PATH: ${"--msas_output_path=/mnt/disks/job_dir/" + msasFolder}
-                        FEATURES_OUTPUT_PATH: ${"--features_output_path=/mnt/disks/job_dir/" + featuresFileName}
-                        METADATA_OUTPUT_PATH: ${"--metadata_output_path=/mnt/disks/job_dir/" + metadataFileName}
+                        FEATURES_OUTPUT_PATH: ${"--features_output_path=" + jobDirMountPath + "/" + featuresFileName}
+                        METADATA_OUTPUT_PATH: ${"--metadata_output_path=" + jobDirMountPath + "/" + metadataFileName}
                         MODEL_PRESET: ${modelPreset}
                         DB_PRESET: ${dbPreset}
                         MAX_TEMPLATE_DATE: ${maxTemplateDate}
-                        REF_DBS_ROOT_PATH: "/mnt/disks/ref_dbs"
+                        REF_DBS_ROOT_PATH: ${refDbsMountPath}
                 volumes:
                   - nfs: 
                       server: ${nfsConfig.ip_address}
                       remotePath: ${nfsConfig.nfs_path}
-                    mountPath: "/mnt/disks/ref_dbs"
+                    mountPath: ${refDbsMountPath}
                   - gcs:
                       remotePath: ${jobPath + "/"}
-                    mountPath: "/mnt/disks/job_dir"
+                    mountPath: ${jobDirMountPath}
                   - gcs:
                       remotePath: ${sequenceBucket}
-                    mountPath: "/mnt/disks/input"
+                    mountPath: ${inputDirMountPath}
                 computeResource:
                   cpuMilli: ${machineConfig.cpuMilli} 
                   memoryMib: ${machineConfig.memoryMib}
@@ -277,6 +280,9 @@ runPredictRelax:
           - taskEnvirons: []
           - numModels: 5
           - numPredictionsPerModel: ${if(modelPreset=="multimer", numMultimerPredictionsPerModel, 1)}
+          - jobDirMountPath: "/mnt/disks/job_dir"
+          - featuresDirMountPath: "/mnt/disks/features"
+          - modelParamsMountPath: "/mnt/disks/params"
     - initPredictionRunners:
         for:
           value: runnerIndex
@@ -289,7 +295,7 @@ runPredictRelax:
                         MODEL_INDEX: ${string(runnerIndex // numPredictionsPerModel)}
                         PRED_INDEX: ${string(runnerIndex % numPredictionsPerModel)}
                         RANDOM_SEED: ${string(randomSeed + runnerIndex)}
-                        MODEL_PARAMS_PATH: "/mnt/disk/params"
+                        MODEL_PARAMS_PATH: "/mnt/disks/params"
                         INPUT_FEATURES_PATH: ${"/mnt/disks/features" + featuresObject}
                         RAW_PREDICTION_OUTPUT_PATH: ${"/mnt/disks/job_dir/" + rawPredictionsFolder}
                         UNRELAXED_PROTEINS_OUTPUT_PATH: ${"/mnt/disks/job_dir/" + unrelaxedProteinsFolder}
@@ -326,19 +332,19 @@ runPredictRelax:
                       volumes:
                         - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"
                         - "/var/lib/nvidia/bin:/usr/local/nvidia/bin"
-                        - "/mnt/disks/params:/mnt/disks/params"
-                        - "/mnt/disks/job_dir:/mnt/disks/job_dir"
-                        - "/mnt/disks/features:/mnt/disks/features"
+                        - ${modelParamsMountPath + ":" + modelParamsMountPath}
+                        - ${jobDirMountPath + ":" + jobDirMountPath}
+                        - ${featuresDirMountPath + ":" + featuresDirMountPath}
                 volumes:
                   - gcs: 
                       remotePath: ${modelParamsPath + "/"}
-                    mountPath: "/mnt/disks/params"
+                    mountPath: ${modelParamsMountPath}
                   - gcs:
                       remotePath: ${jobPath + "/"}
-                    mountPath: "/mnt/disks/job_dir"
+                    mountPath: ${jobDirMountPath}
                   - gcs:
                       remotePath: ${featuresBucket}
-                    mountPath: "/mnt/disks/features"
+                    mountPath: ${featuresDirMountPath}
                 computeResource:
                   cpuMilli: ${machineConfig.cpuMilli} 
                   memoryMib: ${machineConfig.memoryMib}
