@@ -28,6 +28,29 @@ main:
           - networkConfig:
               network: ${"projects/" + projectId + "/global/networks/" + args.network}
               subnetwork: ${"projects/" + projectId + "/regions/" + args.region + "/subnetworks/" + args.subnet}
+          - supportedMachineConfigs: {}
+          - supportedMachineConfigs["c2-standard-16"]:
+                machineType: "c2-standard-16"
+                cpuMilli: 16000
+                memoryMib: 64000
+          - supportedMachineConfigs["c2-standard-30"]:
+                machineType: "c2-standard-30"
+                cpuMilli: 30000
+                memoryMib: 120000
+          - supportedMachineConfigs["n1-standard-8-t4"]:
+                machineType: "n1-standard-8"
+                cpuMilli: 8000
+                memoryMib: 30000
+                gpuType: "nvidia-tesla-t4"
+                gpuCount: 1
+          - supportedMachineConfigs["a2-highgpu-1g"]:
+                machineType: "a2-highgpu-1g"
+                cpuMilli: 12000
+                memoryMib: 85000
+                gpuType: "nvidia-tesla-a100"
+                gpuCount: 1
+          - dataPipelineMachineConfig: ${default(map.get(supportedMachineConfigs, args.dataPipelineMachineType), supportedMachineConfigs["c2-standard-16"])}
+          - predictRelaxMachineConfig: ${default(map.get(supportedMachineConfigs, args.predictRelaxMachineType), supportedMachineConfigs["n1-standard-8-t4"])}
           - runRecord:
               ModelPreset: 
                 stringValue: ${args.modelPreset}
@@ -74,7 +97,7 @@ main:
           region: ${args.region}
           projectId: ${projectId}
           runRecordName: ${runRecordDocument.name}
-          machineType: ${args.machineType}
+          machineConfig: ${dataPipelineMachineConfig}
         result: dataPipelineOutput
 
     - callPredictRelax:
@@ -93,29 +116,19 @@ main:
           numMultimerPredictionsPerModel: ${args.numMultimerPredictionsPerModel}
           randomSeed: ${args.randomSeed}
           parallelism: ${args.parallelism}
-          gpuType: ${args.gpuType} 
+          machineConfig: ${predictRelaxMachineConfig} 
         result: predictRelaxResult
         
 
 
 runDataPipeline:
-  params: [jobId, fastaSequence, jobPath, modelPreset, dbPreset, maxTemplateDate, nfsConfig, networkConfig, imageUri, projectId, region, runRecordName, machineType: "c2-standard-16"]
+  params: [jobId, fastaSequence, jobPath, modelPreset, dbPreset, maxTemplateDate, nfsConfig, networkConfig, imageUri, projectId, region, runRecordName, machineConfig]
   steps:
     - init:
         assign:
           - batchJobId: ${jobId + "-data-pipeline"}
           - batchApi: "batch.googleapis.com/v1"
           - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
-          - supportedMachineConfigs: {}
-          - supportedMachineConfigs["c2-standard-16"]:
-                machineType: "c2-standard-16"
-                cpuMilli: 16000
-                memoryMib: 64000
-          - supportedMachineConfigs["c2-standard-30"]:
-                machineType: "c2-standard-30"
-                cpuMilli: 30000
-                memoryMib: 120000
-          - machineConfig: ${default(map.get(supportedMachineConfigs, machineType), supportedMachineConfigs["c2-standard-16"])}
           - maxRetryCount: 2
           - maxRunDuration: "7200s"
           - metadataFileName: "data_pipeline.json"
@@ -139,8 +152,8 @@ runDataPipeline:
             fields: ${stepRecord}
     - mockReturn:
         return:
-          featuresFilePath: "gs://jk-aff-bucket/batch-jobs/job-alphafold-1668560999/features.pkl"
-          metadataFilePath: "gs://jk-aff-bucket/batch-jobs/job-alphafold-1668560999/metadata.json"
+          featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
+          metadataFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/metadata.json"
 
     - runDataPipelineCloudBatchJob:
         call: http.post
@@ -231,28 +244,15 @@ runDataPipeline:
         raise:
           message: ${"The underlying batch job " + batchJobId + " failed"}
 
+
 runPredictRelax:
-  params: [jobId, inputFeaturesPath, modelParamsPath,  jobPath,  modelPreset, runRelax, imageUri, projectId, region, runRecordName, numMultimerPredictionsPerModel, randomSeed, parallelism, gpuType: "nvidia-tesla-t4"]
+  params: [jobId, inputFeaturesPath, modelParamsPath,  jobPath,  modelPreset, runRelax, imageUri, projectId, region, runRecordName, numMultimerPredictionsPerModel, randomSeed, parallelism, machineConfig]
   steps:
     - init:
         assign:
           - batchJobId: ${jobId + "-predict-relax"}
           - batchApi: "batch.googleapis.com/v1"
           - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
-          - supportedMachineConfigs: {}
-          - supportedMachineConfigs["nvidia-tesla-t4"]:
-                machineType: "n1-standard-8"
-                cpuMilli: 8000
-                memoryMib: 30000
-                gpuType: "nvidia-tesla-t4"
-                gpuCount: 1
-          - supportedMachineConfigs["nvidia-tesla-a100"]:
-                machineType: "a2-highgpu-1g"
-                cpuMilli: 12000
-                memoryMib: 85000
-                gpuType: "nvidia-tesla-a100"
-                gpuCount: 1
-          - machineConfig: ${default(map.get(supportedMachineConfigs, gpuType), supportedMachineConfigs["nvidia-tesla-t4"])}
           - maxRetryCount: 2
           - maxRunDuration: "7200s"
           - metadataFileName: "predict_relax.json"
