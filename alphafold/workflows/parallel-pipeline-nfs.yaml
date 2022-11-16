@@ -147,8 +147,9 @@ runDataPipeline:
                 runnables:
                   - container:
                       imageUri: ${imageUri}
+                      entrypoint: "python"
                       commands:
-                        - "data_pipeline"
+                        - "/runners/run_data_pipeline.py"
                     environment:
                       variables:
                         FASTA_INPUT_PATH: ${"/mnt/disks/input/" + sequenceObject}
@@ -298,8 +299,9 @@ runPredictRelax:
                 runnables:
                   - container:
                       imageUri: ${imageUri}
+                      entrypoint: "python"
                       commands:
-                        - "predict"
+                        - "/runners/run_predict.py"
                       options: "--privileged"
                       volumes:
                         - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"

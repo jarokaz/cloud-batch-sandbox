@@ -86,5 +86,5 @@ WORKDIR /runners
 ADD scripts/ .
 
 ENV PYTHONPATH=/app/alphafold:/runners
+RUN ldconfig
 
-ENTRYPOINT ["/runners/run_step.sh"]
