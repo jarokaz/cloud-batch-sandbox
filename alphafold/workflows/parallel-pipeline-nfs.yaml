@@ -297,7 +297,7 @@ runPredictRelax:
                         RANDOM_SEED: ${string(randomSeed + runnerIndex)}
                         MODEL_PARAMS_PATH: ${modelParamsMountPath}
                         INPUT_FEATURES_PATH: ${featuresDirMountPath + "/" + featuresObject}
-                        RAW_PREDICTION_OUTPUT_PATH: ${jobDirMountPath + "/" + rawPredictionsFolder}
+                        RAW_PREDICTIONS_OUTPUT_PATH: ${jobDirMountPath + "/" + rawPredictionsFolder}
                         UNRELAXED_PROTEINS_OUTPUT_PATH: ${jobDirMountPath + "/" + unrelaxedProteinsFolder}
                         METADATA_OUTPUT_PATH: ${jobDirMountPath + "/" + metadataFileName}
                         MODEL_PRESET: ${modelPreset}

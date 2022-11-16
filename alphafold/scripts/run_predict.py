@@ -36,7 +36,7 @@ def _main(argv):
     input_features_path = os.environ['INPUT_FEATURES_PATH']
     model_params_path = os.environ['MODEL_PARAMS_PATH']
     metadata_output_path = os.environ['METADATA_OUTPUT_PATH']
-    raw_predictions_output_path = os.environ['RAW_PREDICTION_OUTPUT_PATH']
+    raw_predictions_output_path = os.environ['RAW_PREDICTIONS_OUTPUT_PATH']
     unrelaxed_proteins_output_path = os.environ['UNRELAXED_PROTEINS_OUTPUT_PATH']
     model_preset = os.environ['MODEL_PRESET']
     model_index = int(os.environ['MODEL_INDEX'])
@@ -46,8 +46,8 @@ def _main(argv):
     if model_preset not in ['monomer', 'monomer_casp14', 'monomer_ptm', 'multimer']:
         raise ValueError(f'Incorrect model preset {model_preset}')
                              
-    os.makedirs(os.path.dirname(raw_predictions_output_path), exist_ok=True)
-    os.makedirs(os.path.dirname(unrelaxed_proteins_output_path), exist_ok=True)
+    os.makedirs(raw_predictions_output_path, exist_ok=True)
+    os.makedirs(unrelaxed_proteins_output_path, exist_ok=True)
     os.makedirs(os.path.dirname(metadata_output_path), exist_ok=True) 
 
     run_multimer_system = 'multimer' == model_preset
