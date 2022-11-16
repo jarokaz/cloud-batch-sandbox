@@ -38,7 +38,7 @@ def _main(argv):
     metadata_output_path = os.environ['METADATA_OUTPUT_PATH']
     raw_predictions_output_path = os.environ['RAW_PREDICTION_OUTPUT_PATH']
     unrelaxed_proteins_output_path = os.environ['UNRELAXED_PROTEINS_OUTPUT_PATH']
-    model_preset = int(os.environ['MODEL_PRESET'])
+    model_preset = os.environ['MODEL_PRESET']
     model_index = int(os.environ['MODEL_INDEX'])
     prediction_index = int(os.environ['PRED_INDEX'])
     random_seed = int(os.environ['RANDOM_SEED'])
