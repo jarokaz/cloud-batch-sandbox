@@ -20,8 +20,8 @@ main:
           - projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
           - imageUri: ${"gcr.io/" + projectId + "/alphafold"}
           - jobId: ${"job-alphafold-" + string(int(sys.now()))}
-          - jobPath: ${args.stagingLocation + "/" + jobId}
-          - sequencePath: ${jobPath + "/" + "sequence.fasta"}
+          - jobPath: ${args.stagingLocation + "/" + jobId + "/"}
+          - sequencePath: ${jobPath + "sequence.fasta"}
           - nfsConfig:
               ip_address: ${args.nfs_ip_address}
               nfs_path: ${args.nfs_path}
@@ -138,11 +138,11 @@ runDataPipeline:
           - sequenceObject: ${text.substring(fastaSequence, len(text.split(fastaSequence, "/")[0]) + 1, len(fastaSequence))}
           - stepRecord:
               featuresPath: 
-                stringValue: ${jobPath + "/" + featuresFileName}
+                stringValue: ${jobPath + featuresFileName}
               metadataPath: 
-                stringValue: ${jobPath + "/" + metadataFileName}
+                stringValue: ${jobPath + metadataFileName}
               msasPath:
-                stringValue: ${jobPath + "/" + msasFolder}
+                stringValue: ${jobPath + msasFolder}
           - refDbsMountPath: "/mnt/disks/ref_dbs"
           - jobDirMountPath: "/mnt/disks/job_dir"
           - inputDirMountPath: "/mnt/disks/input"
@@ -180,9 +180,9 @@ runDataPipeline:
                     environment:
                       variables:
                         FASTA_INPUT_PATH: ${inputDirMountPath + "/" + sequenceObject}
-                        MSAS_OUTPUT_PATH: ${"--msas_output_path=/mnt/disks/job_dir/" + msasFolder}
-                        FEATURES_OUTPUT_PATH: ${"--features_output_path=" + jobDirMountPath + "/" + featuresFileName}
-                        METADATA_OUTPUT_PATH: ${"--metadata_output_path=" + jobDirMountPath + "/" + metadataFileName}
+                        MSAS_OUTPUT_PATH: ${jobDirMountPath + "/" + msasFolder}
+                        FEATURES_OUTPUT_PATH: ${jobDirMountPath + "/" + featuresFileName}
+                        METADATA_OUTPUT_PATH: ${jobDirMountPath + "/" + metadataFileName}
                         MODEL_PRESET: ${modelPreset}
                         DB_PRESET: ${dbPreset}
                         MAX_TEMPLATE_DATE: ${maxTemplateDate}
@@ -193,7 +193,7 @@ runDataPipeline:
                       remotePath: ${nfsConfig.nfs_path}
                     mountPath: ${refDbsMountPath}
                   - gcs:
-                      remotePath: ${jobPath + "/"}
+                      remotePath: ${jobPath}
                     mountPath: ${jobDirMountPath}
                   - gcs:
                       remotePath: ${sequenceBucket}
@@ -241,8 +241,8 @@ runDataPipeline:
         next: getJob
     - returnResult:
         return:
-          featuresFilePath: ${jobPath + "/" + featuresFileName}
-          metadataFilePath: ${jobPath + "/" + metadataFileName}
+          featuresFilePath: ${jobPath + featuresFileName}
+          metadataFilePath: ${jobPath + metadataFileName}
     - failExecution:
         raise:
           message: ${"The underlying batch job " + batchJobId + " failed"}
@@ -266,13 +266,13 @@ runPredictRelax:
           - featuresObject: ${text.substring(inputFeaturesPath, len(text.split(inputFeaturesPath, "/")[0]) + 1, len(inputFeaturesPath))}
           - stepRecord:
               rawPredictionsPath: 
-                stringValue: ${jobPath + "/" + rawPredictionsFolder}
+                stringValue: ${jobPath + rawPredictionsFolder}
               unrelaxedProteinsPath: 
-                stringValue: ${jobPath + "/" + unrelaxedProteinsFolder}
+                stringValue: ${jobPath + unrelaxedProteinsFolder}
               relaxedProteinsPath: 
-                stringValue: ${jobPath + "/" + relaxedProteinsFolder}
+                stringValue: ${jobPath + relaxedProteinsFolder}
               metadataPath: 
-                stringValue: ${jobPath + "/" + metadataFileName}
+                stringValue: ${jobPath + metadataFileName}
               modelParamsPath:
                 stringValue: ${modelParamsPath}
               inputFeaturesPath:
@@ -295,11 +295,11 @@ runPredictRelax:
                         MODEL_INDEX: ${string(runnerIndex // numPredictionsPerModel)}
                         PRED_INDEX: ${string(runnerIndex % numPredictionsPerModel)}
                         RANDOM_SEED: ${string(randomSeed + runnerIndex)}
-                        MODEL_PARAMS_PATH: "/mnt/disks/params"
-                        INPUT_FEATURES_PATH: ${"/mnt/disks/features" + featuresObject}
-                        RAW_PREDICTION_OUTPUT_PATH: ${"/mnt/disks/job_dir/" + rawPredictionsFolder}
-                        UNRELAXED_PROTEINS_OUTPUT_PATH: ${"/mnt/disks/job_dir/" + unrelaxedProteinsFolder}
-                        METADATA_OUTPUT_PATH: ${"/mnt/disks/job_dir" + metadataFileName}
+                        MODEL_PARAMS_PATH: ${modelParamsMountPath}
+                        INPUT_FEATURES_PATH: ${featuresDirMountPath + "/" + featuresObject}
+                        RAW_PREDICTION_OUTPUT_PATH: ${jobDirMountPath + "/" + rawPredictionsFolder}
+                        UNRELAXED_PROTEINS_OUTPUT_PATH: ${jobDirMountPath + "/" + unrelaxedProteinsFolder}
+                        METADATA_OUTPUT_PATH: ${jobDirMountPath + "/" + metadataFileName}
                         MODEL_PRESET: ${modelPreset}
                   - taskEnvirons: ${list.concat(taskEnvirons, taskEnviron)}
 
@@ -337,10 +337,10 @@ runPredictRelax:
                         - ${featuresDirMountPath + ":" + featuresDirMountPath}
                 volumes:
                   - gcs: 
-                      remotePath: ${modelParamsPath + "/"}
+                      remotePath: ${modelParamsPath}
                     mountPath: ${modelParamsMountPath}
                   - gcs:
-                      remotePath: ${jobPath + "/"}
+                      remotePath: ${jobPath}
                     mountPath: ${jobDirMountPath}
                   - gcs:
                       remotePath: ${featuresBucket}
