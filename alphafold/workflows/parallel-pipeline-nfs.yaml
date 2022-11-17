@@ -258,21 +258,15 @@ runPredictRelax:
           - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
           - maxRetryCount: 2
           - maxRunDuration: "7200s"
-          - metadataFileName: "predict_relax.json"
-          - rawPredictionsFolder: "raw_predictions"
-          - unrelaxedProteinsFolder: "unrelaxed_proteins"
-          - relaxedProteinsFolder: "relaxed_proteins"
           - featuresBucket: ${text.split(inputFeaturesPath, "/")[0]}
           - featuresObject: ${text.substring(inputFeaturesPath, len(text.split(inputFeaturesPath, "/")[0]) + 1, len(inputFeaturesPath))}
           - stepRecord:
               rawPredictionsPath: 
-                stringValue: ${jobPath + rawPredictionsFolder}
+                stringValue: ${jobPath}
               unrelaxedProteinsPath: 
-                stringValue: ${jobPath + unrelaxedProteinsFolder}
+                stringValue: ${jobPath}
               relaxedProteinsPath: 
-                stringValue: ${jobPath + relaxedProteinsFolder}
-              metadataPath: 
-                stringValue: ${jobPath + metadataFileName}
+                stringValue: ${jobPath}
               modelParamsPath:
                 stringValue: ${modelParamsPath}
               inputFeaturesPath:
@@ -290,17 +284,22 @@ runPredictRelax:
           steps:
             - updateTaskEnviron:
                 assign:
+                  - modelIndex: ${string(runnerIndex // numPredictionsPerModel)}
+                  - predictionIndex: ${string(runnerIndex % numPredictionsPerModel)}
                   - taskEnviron: 
                       variables:
-                        MODEL_INDEX: ${string(runnerIndex // numPredictionsPerModel)}
-                        PRED_INDEX: ${string(runnerIndex % numPredictionsPerModel)}
+                        MODEL_INDEX: ${modelIndex}
+                        PRED_INDEX: ${predictionIndex}
                         RANDOM_SEED: ${string(randomSeed + runnerIndex)}
                         MODEL_PARAMS_PATH: ${modelParamsMountPath}
                         INPUT_FEATURES_PATH: ${featuresDirMountPath + "/" + featuresObject}
-                        RAW_PREDICTIONS_OUTPUT_PATH: ${jobDirMountPath + "/" + rawPredictionsFolder}
-                        UNRELAXED_PROTEINS_OUTPUT_PATH: ${jobDirMountPath + "/" + unrelaxedProteinsFolder}
-                        METADATA_OUTPUT_PATH: ${jobDirMountPath + "/" + metadataFileName}
+                        RAW_PREDICTION_PATH: ${jobDirMountPath +  "/result_model_" + modelIndex + "_pred_" + predictionIndex + ".pkl" }
+                        UNRELAXED_PROTEIN_PATH: ${jobDirMountPath +  "/unrelaxed_model_" + modelIndex + "_pred_" + predictionIndex + ".pdb"}
+                        PREDICTION_METADATA_PATH: ${jobDirMountPath + "/pred_metadata_model_" + modelIndex + "_pred_" + predictionIndex + ".json"}
+                        RELAXATION_METADATA_PATH: ${jobDirMountPath + "/relax_metadata_model_" + modelIndex + "_pred_" + predictionIndex + ".json"}
                         MODEL_PRESET: ${modelPreset}
+                        RUN_RELAXATION: ${if(runRelax, "true", "false")}
+                        
                   - taskEnvirons: ${list.concat(taskEnvirons, taskEnviron)}
 
     - updateRunRecord:
@@ -335,6 +334,16 @@ runPredictRelax:
                         - ${modelParamsMountPath + ":" + modelParamsMountPath}
                         - ${jobDirMountPath + ":" + jobDirMountPath}
                         - ${featuresDirMountPath + ":" + featuresDirMountPath}
+                  - container:
+                      imageUri: ${imageUri}
+                      entrypoint: "python"
+                      commands:
+                        - "/runners/run_relax.py"
+                      options: "--privileged"
+                      volumes:
+                        - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"
+                        - "/var/lib/nvidia/bin:/usr/local/nvidia/bin"
+                        - ${jobDirMountPath + ":" + jobDirMountPath}
                 volumes:
                   - gcs: 
                       remotePath: ${modelParamsPath}

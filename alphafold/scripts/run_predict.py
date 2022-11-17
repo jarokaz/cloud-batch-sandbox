@@ -35,9 +35,9 @@ def _main(argv):
     # Retrieve and validate runner's parameters
     input_features_path = os.environ['INPUT_FEATURES_PATH']
     model_params_path = os.environ['MODEL_PARAMS_PATH']
-    metadata_output_path = os.environ['METADATA_OUTPUT_PATH']
-    raw_predictions_output_path = os.environ['RAW_PREDICTIONS_OUTPUT_PATH']
-    unrelaxed_proteins_output_path = os.environ['UNRELAXED_PROTEINS_OUTPUT_PATH']
+    metadata_output_path = os.environ['PREDICTION_METADATA_PATH']
+    raw_prediction_output_path = os.environ['RAW_PREDICTION_PATH']
+    unrelaxed_protein_output_path = os.environ['UNRELAXED_PROTEIN_PATH']
     model_preset = os.environ['MODEL_PRESET']
     model_index = int(os.environ['MODEL_INDEX'])
     prediction_index = int(os.environ['PRED_INDEX'])
@@ -46,15 +46,13 @@ def _main(argv):
     if model_preset not in ['monomer', 'monomer_casp14', 'monomer_ptm', 'multimer']:
         raise ValueError(f'Incorrect model preset {model_preset}')
                              
-    os.makedirs(raw_predictions_output_path, exist_ok=True)
-    os.makedirs(unrelaxed_proteins_output_path, exist_ok=True)
+    os.makedirs(os.path.dirname(raw_prediction_output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(unrelaxed_protein_output_path), exist_ok=True)
     os.makedirs(os.path.dirname(metadata_output_path), exist_ok=True) 
 
     run_multimer_system = 'multimer' == model_preset
     num_ensemble = 8 if model_preset == 'monomer_casp14' else 1
     model_name = config.MODEL_PRESETS[model_preset][model_index]
-    raw_prediction_path = os.path.join(raw_predictions_output_path, f'result_{model_name}_pred_{prediction_index}.pkl')
-    unrelaxed_protein_path = os.path.join(unrelaxed_proteins_output_path, f'unrelaxed_{model_name}_pred_{prediction_index}.pkl')
                             
     logging.info(f'Starting model prediction {prediction_index} using model {model_name}...')
     t0 = time.time()
@@ -66,12 +64,15 @@ def _main(argv):
         num_ensemble=num_ensemble,
         run_multimer_system=run_multimer_system,
         random_seed=random_seed,
-        raw_prediction_path=raw_prediction_path,
-        unrelaxed_protein_path=unrelaxed_protein_path
+        raw_prediction_path=raw_prediction_output_path,
+        unrelaxed_protein_path=unrelaxed_protein_output_path
     )
 
     prediction_metadata = {
         'model_name': model_name,
+        'model_index': model_index,
+        'prediction_index': prediction_index,
+        'random_seed': random_seed,
         'ranking_confidence': prediction_result['ranking_confidence'],
     }
     
