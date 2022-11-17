@@ -295,6 +295,7 @@ runPredictRelax:
                         INPUT_FEATURES_PATH: ${featuresDirMountPath + "/" + featuresObject}
                         RAW_PREDICTION_PATH: ${jobDirMountPath +  "/result_model_" + modelIndex + "_pred_" + predictionIndex + ".pkl" }
                         UNRELAXED_PROTEIN_PATH: ${jobDirMountPath +  "/unrelaxed_model_" + modelIndex + "_pred_" + predictionIndex + ".pdb"}
+                        RELAXED_PROTEIN_PATH: ${jobDirMountPath +  "/relaxed_model_" + modelIndex + "_pred_" + predictionIndex + ".pdb"}
                         PREDICTION_METADATA_PATH: ${jobDirMountPath + "/pred_metadata_model_" + modelIndex + "_pred_" + predictionIndex + ".json"}
                         RELAXATION_METADATA_PATH: ${jobDirMountPath + "/relax_metadata_model_" + modelIndex + "_pred_" + predictionIndex + ".json"}
                         MODEL_PRESET: ${modelPreset}

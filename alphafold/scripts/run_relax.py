@@ -25,7 +25,7 @@ from absl import app
 from absl import logging
 
 from alphafold.model import config
-from alphafold_utils import predict
+from alphafold_utils import relax_protein
 
 
 def _main(argv):
