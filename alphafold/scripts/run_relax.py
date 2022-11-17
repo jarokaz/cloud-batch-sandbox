@@ -47,7 +47,7 @@ def _main(argv):
     exclude_residues = os.getenv('EXCLUDE_RESIDUES', None)
     if exclude_residues:
         exclude_residues = exclude_residues.split(',')
-    elif:
+    else:
         exclude_residues = []
     max_outer_iterations = int(os.getenv('MAX_OUTER_ITERATIONS', 3)) 
 
