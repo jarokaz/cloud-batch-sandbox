@@ -83,12 +83,17 @@ gcloud workflows executions describe-last
 #### Parallel pipeline
 
 ```
+export SERVICE_ACCOUNT=workflows-sa
+export PROJECT_ID=jk-af-final
+```
+
+```
 gcloud workflows deploy af-parallel-workflow \
   --source=parallel-pipeline-nfs.yaml \
   --service-account=workflows-sa@$PROJECT_ID.iam.gserviceaccount.com
 
 gcloud workflows run af-parallel-workflow \
---data='{"region":"us-central1","fastaSequence":"jk-aff-bucket/fasta/T1050.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-aff-bucket/batch-jobs","modelPreset":"monomer","dbPreset":"reduced_dbs","modelParamsPath":"jk-alphafold-datasets-archive/v2.2.0/","runRelax":true,"runsCollection":"AlphaFoldExperiments/T1050-Experiment/InferenceRuns","numMultimerPredictionsPerModel":5,"randomSeed":123456,"parallelism":1,"nfs_ip_address":"10.130.0.2","nfs_path":"/datasets","network":"jk-aff-network","subnet":"jk-aff-subnet","dataPipelineMachineType":"c2-standard-16","predictRelaxMachineType":"n1-standard-8-t4"}'
+--data='{"region":"us-central1","fastaSequence":"jk-aff-bucket/fasta/T1050.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-aff-bucket/batch-jobs","modelPreset":"monomer","dbPreset":"reduced_dbs","modelParamsPath":"jk-alphafold-datasets-archive/v2.2.0/","runRelax":true,"runsCollection":"AlphaFoldExperiments/Mysterious-Experiment/InferenceRuns","numMultimerPredictionsPerModel":5,"randomSeed":123456,"parallelism":5,"nfs_ip_address":"10.130.0.2","nfs_path":"/datasets","network":"jk-aff-network","subnet":"jk-aff-subnet","dataPipelineMachineType":"c2-standard-16","predictRelaxMachineType":"n1-standard-8-t4"}'
 ```
 
 ```
@@ -97,4 +102,10 @@ gcloud workflows executions describe-last
 
 gcloud batch jobs describe 
 
-8116723-data-pipeline
+gcloud workflows deploy test-workflow \
+  --source=test-pipeline.yaml \
+  --service-account=workflows-sa@$PROJECT_ID.iam.gserviceaccount.com
+
+gcloud workflows run test-workflow \
+--data='{"region":"us-central1","fastaSequence":"jk-aff-bucket/fasta/mysterious.fasta","maxTemplateDate":"2020-05-14","stagingLocation":"jk-aff-bucket/batch-jobs","modelPreset":"monomer","dbPreset":"full_dbs","modelParamsPath":"jk-alphafold-datasets-archive/v2.2.0/","runRelax":true,"runsCollection":"AlphaFoldExperiments/Mysterious-Experiment/InferenceRuns","numMultimerPredictionsPerModel":5,"randomSeed":123456,"parallelism":5,"nfs_ip_address":"10.130.0.2","nfs_path":"/datasets","network":"jk-aff-network","subnet":"jk-aff-subnet","dataPipelineMachineType":"c2-standard-30","predictRelaxMachineType":"a2-highgpu-1g"}'
+```

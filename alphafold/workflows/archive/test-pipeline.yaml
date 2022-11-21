@@ -103,7 +103,8 @@ main:
           runRecordName: ${runRecordDocument.name}
           machineConfig: ${dataPipelineMachineConfig}
         result: dataPipelineOutput
-
+    - finish:
+        next: end
     - callPredictRelax:
         call: runPredictRelax
         args:
@@ -150,6 +151,9 @@ runDataPipeline:
           - refDbsMountPath: "/mnt/disks/ref_dbs"
           - jobDirMountPath: "/mnt/disks/job_dir"
           - inputDirMountPath: "/mnt/disks/input"
+          - command: "python /runners/run_test.py"
+          - command: ${command + " --fasta_input_path=${FASTA_INPUT_PATH}"}
+          - command: ${command + " --msas_output_path=${MSAS_OUTPUT_PATH}"}
 
     - updateRunRecord:
         call: googleapis.firestore.v1.projects.databases.documents.patch
@@ -178,17 +182,20 @@ runDataPipeline:
                 runnables:
                   - container:
                       imageUri: ${imageUri}
-                      entrypoint: "python"
+                      entrypoint: "/bin/sh"
                       commands:
-                        - "/runners/run_data_pipeline.py"
-                        - ${"--fasta_input_path=" + inputDirMountPath + "/" + sequenceObject}
-                        - ${"--msas_output_path=" + jobDirMountPath + "/" + msasFolder}
-                        - ${"--features_output_path=" + jobDirMountPath + "/" + featuresFileName}
-                        - ${"--metadata_output_path=" + jobDirMountPath + "/" + metadataFileName}
-                        - ${"--ref_dbs_root_path=" + refDbsMountPath}
-                        - ${"--db_preset=" + dbPreset}
-                        - ${"--model_preset=" + modelPreset}
-                        - ${"--max_template_date=" + maxTemplateDate}
+                        - "-c"
+                        - ${command} 
+                    environment:
+                      variables:
+                        FASTA_INPUT_PATH: ${inputDirMountPath + "/" + sequenceObject}
+                        MSAS_OUTPUT_PATH: ${jobDirMountPath + "/" + msasFolder}
+                        FEATURES_OUTPUT_PATH: ${jobDirMountPath + "/" + featuresFileName}
+                        METADATA_OUTPUT_PATH: ${jobDirMountPath + "/" + metadataFileName}
+                        MODEL_PRESET: ${modelPreset}
+                        DB_PRESET: ${dbPreset}
+                        MAX_TEMPLATE_DATE: ${maxTemplateDate}
+                        REF_DBS_ROOT_PATH: ${refDbsMountPath}
                 volumes:
                   - nfs: 
                       server: ${nfsConfig.ip_address}
@@ -280,22 +287,6 @@ runPredictRelax:
           - jobDirMountPath: "/mnt/disks/job_dir"
           - featuresDirMountPath: "/mnt/disks/features"
           - modelParamsMountPath: "/mnt/disks/params"
-          - predictCommand: "python /runners/run_predict.py"
-          - predictCommand: ${predictCommand + " --input_features_path=$INPUT_FEATURES_PATH"}
-          - predictCommand: ${predictCommand + " --model_params_path=$MODEL_PARAMS_PATH"}
-          - predictCommand: ${predictCommand + " --metadata_output_path=$PREDICTION_METADATA_PATH"}
-          - predictCommand: ${predictCommand + " --raw_prediction_path=$RAW_PREDICTION_PATH"}
-          - predictCommand: ${predictCommand + " --unrelaxed_protein_path=$UNRELAXED_PROTEIN_PATH"}
-          - predictCommand: ${predictCommand + " --model_preset=$MODEL_PRESET"}
-          - predictCommand: ${predictCommand + " --model_index=$MODEL_INDEX"}
-          - predictCommand: ${predictCommand + " --prediction_index=$PRED_INDEX"}
-          - predictCommand: ${predictCommand + " --random_seed=$RANDOM_SEED"}
-          - relaxCommand: "python /runners/run_relax.py"
-          - relaxCommand: ${relaxCommand + " --unrelaxed_protein_path=$UNRELAXED_PROTEIN_PATH"}
-          - relaxCommand: ${relaxCommand + " --relaxed_protein_path=$RELAXED_PROTEIN_PATH"}
-          - relaxCommand: ${relaxCommand + " --metadata_output_path=$RELAXATION_METADATA_PATH"}
-          - relaxCommand: ${relaxCommand + " --unrelaxed_protein_path=$UNRELAXED_PROTEIN_PATH"}
-          - relaxCommand: ${relaxCommand + " --$RUN_RELAXATION"}
     - initPredictionRunners:
         for:
           value: runnerIndex
@@ -318,7 +309,7 @@ runPredictRelax:
                         PREDICTION_METADATA_PATH: ${jobDirMountPath + "/pred_metadata_model_" + modelIndex + "_pred_" + predictionIndex + ".json"}
                         RELAXATION_METADATA_PATH: ${jobDirMountPath + "/relax_metadata_model_" + modelIndex + "_pred_" + predictionIndex + ".json"}
                         MODEL_PRESET: ${modelPreset}
-                        RUN_RELAXATION: ${if(runRelax, "run_relax", "norun_relax")}
+                        RUN_RELAXATION: ${if(runRelax, "true", "false")}
                         
                   - taskEnvirons: ${list.concat(taskEnvirons, taskEnviron)}
 
@@ -344,10 +335,9 @@ runPredictRelax:
                 runnables:
                   - container:
                       imageUri: ${imageUri}
-                      entrypoint: "/bin/sh"
+                      entrypoint: "python"
                       commands:
-                        - "-c"
-                        - ${predictCommand} 
+                        - "/runners/run_predict.py"
                       options: "--privileged"
                       volumes:
                         - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"
@@ -357,10 +347,9 @@ runPredictRelax:
                         - ${featuresDirMountPath + ":" + featuresDirMountPath}
                   - container:
                       imageUri: ${imageUri}
-                      entrypoint: "/bin/sh"
+                      entrypoint: "python"
                       commands:
-                        - "-c"
-                        - ${relaxCommand} 
+                        - "/runners/run_relax.py"
                       options: "--privileged"
                       volumes:
                         - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"
