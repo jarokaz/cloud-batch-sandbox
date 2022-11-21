@@ -65,8 +65,6 @@ def _main(argv):
     run_multimer_system = 'multimer' == FLAGS.model_preset
     num_ensemble = 8 if FLAGS.model_preset == 'monomer_casp14' else 1
     model_name = config.MODEL_PRESETS[FLAGS.model_preset][FLAGS.model_index]
-    raw_prediction_path = os.path.join(FLAGS.raw_predictions_output_path, f'result_{model_name}_pred_{FLAGS.prediction_index}.pkl')
-    unrelaxed_protein_path = os.path.join(FLAGS.unrelaxed_proteins_output_path, f'unrelaxed_{model_name}_pred_{FLAGS.prediction_index}.pkl')
                             
     logging.info(f'Starting model prediction {FLAGS.prediction_index} using model {model_name}...')
     t0 = time.time()
