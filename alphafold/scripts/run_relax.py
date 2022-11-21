@@ -57,9 +57,9 @@ def _main(argv):
         logging.info('Skipping relaxation')
         return
 
-    logging.info(f'Running relaxation using features in: {FLAGS.input_features_path}')  
+    logging.info(f'Running relaxation on: {FLAGS.unrelaxed_protein_path}')  
 
-    os.makedirs(os.path.dirname(FLAGS.relaxed_protein_output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(FLAGS.relaxed_protein_path), exist_ok=True)
     os.makedirs(os.path.dirname(FLAGS.metadata_output_path), exist_ok=True) 
     t0 = time.time()
     logging.info('Starting model relaxation ...')
