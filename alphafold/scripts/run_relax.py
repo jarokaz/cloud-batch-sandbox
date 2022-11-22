@@ -29,7 +29,7 @@ from alphafold_utils import relax_protein
 
 flags.DEFINE_string('metadata_output_path', None, 'A path to a metadata output file')
 flags.DEFINE_string('unrelaxed_protein_path', None, 'A path to a directory that will store unrelaxed proteins')
-flags.DEFINE_string('relaxed_proteint_path', None, 'A path to a directory that will store relaxed proteins')
+flags.DEFINE_string('relaxed_protein_path', None, 'A path to a directory that will store relaxed proteins')
 flags.DEFINE_boolean('run_relax', True, 'Whether to run the final relaxation '
                      'step on the predicted models. Turning relax off might '
                      'result in predictions with distracting stereochemical '
@@ -42,12 +42,12 @@ flags.DEFINE_boolean('use_gpu_relax', True, 'Whether to relax on GPU. '
 flags.DEFINE_integer('max_iterations', 0, 'Max iterations')
 flags.DEFINE_float('tolerance', 2.39, 'Tolerance')
 flags.DEFINE_float('stiffness', 10, 'Stiffness')
-flags.DEFINE_integer('MAX_OUTER_ITERATIONS', 3, 'Max outer iterations')
-flags.DEFINE_list('exclud_residues', [], 'The list of residues to exclude')
+flags.DEFINE_integer('max_outer_iterations', 3, 'Max outer iterations')
+flags.DEFINE_list('exclude_residues', [], 'The list of residues to exclude')
 
 flags.mark_flag_as_required('metadata_output_path')
 flags.mark_flag_as_required('relaxed_protein_path')
-flags.mark_flag_as_required('unrelaxed_protein__path')
+flags.mark_flag_as_required('unrelaxed_protein_path')
 FLAGS = flags.FLAGS
 
 
@@ -79,7 +79,7 @@ def _main(argv):
         'property_1': 'value_1',
     }
     
-    with open(metadata_output_path, 'w') as f:
+    with open(FLAGS.metadata_output_path, 'w') as f:
         json.dump(relaxation_metadata, f, indent=4)
                             
     t1 = time.time()
