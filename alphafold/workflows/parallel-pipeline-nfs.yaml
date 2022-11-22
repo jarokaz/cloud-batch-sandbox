@@ -119,10 +119,10 @@ runDataPipeline:
           - jobDirMountPath: "/mnt/disks/job_dir"
           - inputDirMountPath: "/mnt/disks/input"
 
-    #- mockReturn:
-    #    return:
-    #      featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
-    #      metadataFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/metadata.json"
+    - mockReturn:
+        return:
+          featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
+          metadataFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/metadata.json"
 
     - runDataPipelineCloudBatchJob:
         call: http.post

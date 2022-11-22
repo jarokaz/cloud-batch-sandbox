@@ -119,10 +119,10 @@ runDataPipeline:
           - jobDirMountPath: "/mnt/disks/job_dir"
           - inputDirMountPath: "/mnt/disks/input"
 
-    #- mockReturn:
-    #    return:
-    #      featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
-    #      metadataFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/metadata.json"
+    - mockReturn:
+        return:
+          featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
+          metadataFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/metadata.json"
 
     - runDataPipelineCloudBatchJob:
         call: http.post
@@ -218,7 +218,6 @@ runPredictRelax:
   steps:
     - init:
         assign:
-          - batchJobId: ${jobId + "-predict-relax"}
           - batchApi: "batch.googleapis.com/v1"
           - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
           - maxRetryCount: 2
@@ -237,10 +236,11 @@ runPredictRelax:
           shared: [jobResults] 
           for:
             value: runnerIndex
-            in: ${[0, numModels * numPredictionsPerModel - 1]}
+            range: ${[0, numModels * numPredictionsPerModel - 1]}
             steps:
               - initParams:
                   assign:
+                    - batchJobId: ${jobId + "-predict-relax-" + runnerIndex}
                     - modelIndex: ${runnerIndex // numPredictionsPerModel}
                     - predictionIndex: ${runnerIndex % numPredictionsPerModel}
                     - predictionRandomSeed: ${randomSeed + runnerIndex}
@@ -249,6 +249,10 @@ runPredictRelax:
                     - relaxedProteinPath: ${jobDirMountPath +  "/relaxed_model_" + modelIndex + "_pred_" + predictionIndex + ".pdb"}
                     - predictionMetadataPath: ${jobDirMountPath + "/pred_metadata_model_" + modelIndex + "_pred_" + predictionIndex + ".json"}
                     - relaxationMetadataPath: ${jobDirMountPath + "/relax_metadata_model_" + modelIndex + "_pred_" + predictionIndex + ".json"}
+              - logJobStart:
+                  call: sys.log
+                  args:
+                    data: ${"Starting job " + batchJobId + " Concurrency level is " + parallelism}
               - startBatchJob:
                   call: http.post
                   args:
@@ -288,7 +292,7 @@ runPredictRelax:
                                 imageUri: ${imageUri}
                                 entrypoint: "python"
                                 commands:
-                                  - "/runners/run_relaxy.py"
+                                  - "/runners/run_relax.py"
                                   - ${"--unrelaxed_protein_path=" + unrelaxedProteinPath}
                                   - ${"--relaxed_protein_path=" + relaxedProteinPath}
                                   - ${"--metadata_output_path=" + relaxationMetadataPath}
@@ -315,8 +319,7 @@ runPredictRelax:
                             bootDiskMib: ${machineConfig.bootDiskMib}
                           maxRetryCount: ${maxRetryCount}
                           maxRunDuration: ${maxRunDuration}
-                        taskCount: ${numModels * numPredictionsPerModel}
-                        parallelism: ${parallelism}
+                        taskCount: 1 
                       allocationPolicy:
                         instances:
                           - policy:
@@ -339,13 +342,13 @@ runPredictRelax:
               - logState:
                   call: sys.log
                   args:
-                    data: ${"Current job state " + getJobResult.body.status.state}
+                    data: ${"Current job state for job  " + batchJobId + " is " + getJobResult.body.status.state}
               - checkState:
                   switch:
                     - condition: ${getJobResult.body.status.state == "SUCCEEDED"}
                       next: returnResult
                     - condition: ${getJobResult.body.status.state == "FAILED"}
-                      next: failExecution 
+                      next: returnResult 
                   next: sleep
               - sleep:
                   call: sys.sleep
@@ -355,8 +358,8 @@ runPredictRelax:
               - returnResult:
                   assign:
                     - jobResults: ${list.concat(jobResults, getJobResult)}
-              - complete:
-                  next: continue
-              - failExecution:
-                  raise:
-                    message: ${"The underlying batch job " + batchJobId + " failed"}
+                    
+    - monitorJobs:
+        call: sys.log
+        args:
+          data: ${jobResults}
