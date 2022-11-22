@@ -275,7 +275,7 @@ runPredictRelax:
                                   - ${"--unrelaxed_protein_path=" + unrelaxedProteinPath}
                                   - ${"--model_preset=" + modelPreset}
                                   - ${"--model_index=" + modelIndex}
-                                  - ${"--prediction_index=" + predIndex}
+                                  - ${"--prediction_index=" + predictionIndex}
                                   - ${"--random_seed=" + predictionRandomSeed}
                                 options: "--privileged"
                                 volumes:
