@@ -55,19 +55,6 @@ main:
                 gpuCount: 1
           - dataPipelineMachineConfig: ${default(map.get(supportedMachineConfigs, args.dataPipelineMachineType), supportedMachineConfigs["c2-standard-16"])}
           - predictRelaxMachineConfig: ${default(map.get(supportedMachineConfigs, args.predictRelaxMachineType), supportedMachineConfigs["n1-standard-8-t4"])}
-          - runRecord:
-              ModelPreset: 
-                stringValue: ${args.modelPreset}
-              Sequence: 
-                stringValue: ${args.fastaSequence}
-              DbPreset: 
-                stringValue: ${args.dbPreset}
-              jobPath: 
-                stringValue: ${jobPath}
-              numMultimerPredictionsPerModel:
-                integerValue: ${args.numMultimerPredictionsPerModel}
-              runRelax: 
-                booleanValue: ${args.runRelax}
     - copySequence:
         call: googleapis.storage.v1.objects.copy
         args:
@@ -76,16 +63,6 @@ main:
             sourceBucket: ${text.url_encode(text.split(args.fastaSequence, "/")[0])}
             sourceObject: ${text.url_encode(text.substring(args.fastaSequence, len(text.split(args.fastaSequence, "/")[0]) + 1, len(args.fastaSequence)))}
 
-    - startRunLog:
-        call: googleapis.firestore.v1.projects.databases.documents.createDocument
-        args:
-          collectionId: ${args.runsCollection}
-          parent: ${"projects/"+projectId+"/databases/(default)/documents"}
-          documentId: ${jobId}
-          body:
-            fields: ${runRecord}
-        result: runRecordDocument
-    
     - callDataPipeline:
         call: runDataPipeline
         args:
@@ -100,7 +77,6 @@ main:
           imageUri: ${imageUri}
           region: ${args.region}
           projectId: ${projectId}
-          runRecordName: ${runRecordDocument.name}
           machineConfig: ${dataPipelineMachineConfig}
         result: dataPipelineOutput
 
@@ -116,7 +92,6 @@ main:
           imageUri: ${imageUri}
           region: ${args.region}
           projectId: ${projectId}
-          runRecordName: ${runRecordDocument.name}
           numMultimerPredictionsPerModel: ${args.numMultimerPredictionsPerModel}
           randomSeed: ${args.randomSeed}
           parallelism: ${args.parallelism}
@@ -126,7 +101,7 @@ main:
 
 
 runDataPipeline:
-  params: [jobId, fastaSequence, jobPath, modelPreset, dbPreset, maxTemplateDate, nfsConfig, networkConfig, imageUri, projectId, region, runRecordName, machineConfig]
+  params: [jobId, fastaSequence, jobPath, modelPreset, dbPreset, maxTemplateDate, nfsConfig, networkConfig, imageUri, projectId, region,  machineConfig]
   steps:
     - init:
         assign:
@@ -140,23 +115,10 @@ runDataPipeline:
           - featuresFileName: "features.pkl"
           - sequenceBucket: ${text.split(fastaSequence, "/")[0]}
           - sequenceObject: ${text.substring(fastaSequence, len(text.split(fastaSequence, "/")[0]) + 1, len(fastaSequence))}
-          - stepRecord:
-              featuresPath: 
-                stringValue: ${jobPath + featuresFileName}
-              metadataPath: 
-                stringValue: ${jobPath + metadataFileName}
-              msasPath:
-                stringValue: ${jobPath + msasFolder}
           - refDbsMountPath: "/mnt/disks/ref_dbs"
           - jobDirMountPath: "/mnt/disks/job_dir"
           - inputDirMountPath: "/mnt/disks/input"
 
-    - updateRunRecord:
-        call: googleapis.firestore.v1.projects.databases.documents.patch
-        args:
-          name: ${runRecordName + "/steps/data_pipeline"}
-          body:
-            fields: ${stepRecord}
     - mockReturn:
         return:
           featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
@@ -252,7 +214,7 @@ runDataPipeline:
 
 
 runPredictRelax:
-  params: [jobId, inputFeaturesPath, modelParamsPath,  jobPath,  modelPreset, runRelax, imageUri, projectId, region, runRecordName, numMultimerPredictionsPerModel, randomSeed, parallelism, machineConfig]
+  params: [jobId, inputFeaturesPath, modelParamsPath,  jobPath,  modelPreset, runRelax, imageUri, projectId, region,  numMultimerPredictionsPerModel, randomSeed, parallelism, machineConfig]
   steps:
     - init:
         assign:
@@ -263,17 +225,6 @@ runPredictRelax:
           - maxRunDuration: "7200s"
           - featuresBucket: ${text.split(inputFeaturesPath, "/")[0]}
           - featuresObject: ${text.substring(inputFeaturesPath, len(text.split(inputFeaturesPath, "/")[0]) + 1, len(inputFeaturesPath))}
-          - stepRecord:
-              rawPredictionsPath: 
-                stringValue: ${jobPath}
-              unrelaxedProteinsPath: 
-                stringValue: ${jobPath}
-              relaxedProteinsPath: 
-                stringValue: ${jobPath}
-              modelParamsPath:
-                stringValue: ${modelParamsPath}
-              inputFeaturesPath:
-                stringValue: ${inputFeaturesPath}
           - taskEnvirons: []
           - numModels: 5
           - numPredictionsPerModel: ${if(modelPreset=="multimer", numMultimerPredictionsPerModel, 1)}
@@ -322,12 +273,6 @@ runPredictRelax:
                         
                   - taskEnvirons: ${list.concat(taskEnvirons, taskEnviron)}
 
-    - updateRunRecord:
-        call: googleapis.firestore.v1.projects.databases.documents.patch
-        args:
-          name: ${runRecordName + "/steps/data_pipeline"}
-          body:
-            fields: ${stepRecord}
     - runPredictRelaxCloudBatchJob: 
         call: http.post
         args:
