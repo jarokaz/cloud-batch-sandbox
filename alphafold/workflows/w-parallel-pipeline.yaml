@@ -11,23 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# [START workflows_batch_primegen]
+
 main:
   params: [args]
   steps:
     - init:
         assign:
-          - projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
-          - imageUri: ${"gcr.io/" + projectId + "/alphafold"}
-          - jobId: ${"job-alphafold-" + string(int(sys.now()))}
-          - jobPath: ${args.stagingLocation + "/" + jobId + "/"}
-          - sequencePath: ${jobPath + "sequence.fasta"}
-          - nfsConfig:
-              ip_address: ${args.nfs_ip_address}
-              nfs_path: ${args.nfs_path}
-          - networkConfig:
-              network: ${"projects/" + projectId + "/global/networks/" + args.network}
-              subnetwork: ${"projects/" + projectId + "/regions/" + args.region + "/subnetworks/" + args.subnet}
           - supportedMachineConfigs: {}
           - supportedMachineConfigs["c2-standard-16"]:
                 machineType: "c2-standard-16"
@@ -55,75 +44,35 @@ main:
                 gpuCount: 1
           - dataPipelineMachineConfig: ${default(map.get(supportedMachineConfigs, args.dataPipelineMachineType), supportedMachineConfigs["c2-standard-16"])}
           - predictRelaxMachineConfig: ${default(map.get(supportedMachineConfigs, args.predictRelaxMachineType), supportedMachineConfigs["n1-standard-8-t4"])}
-    - copySequence:
-        call: googleapis.storage.v1.objects.copy
-        args:
-            destinationBucket: ${text.url_encode(text.split(sequencePath, "/")[0])} 
-            destinationObject: ${text.url_encode(text.substring(sequencePath, len(text.split(sequencePath, "/")[0]) + 1, len(sequencePath)))}
-            sourceBucket: ${text.url_encode(text.split(args.fastaSequence, "/")[0])}
-            sourceObject: ${text.url_encode(text.substring(args.fastaSequence, len(text.split(args.fastaSequence, "/")[0]) + 1, len(args.fastaSequence)))}
 
     - callDataPipeline:
         call: runDataPipeline
         args:
-          fastaSequence: ${sequencePath}
-          maxTemplateDate: ${args.maxTemplateDate}
-          jobId: ${jobId}
-          jobPath: ${jobPath}
-          nfsConfig: ${nfsConfig}
-          networkConfig: ${networkConfig}
-          modelPreset: ${args.modelPreset}
-          dbPreset: ${args.dbPreset}
-          imageUri: ${imageUri}
-          region: ${args.region}
-          projectId: ${projectId}
           machineConfig: ${dataPipelineMachineConfig}
+          args: args
         result: dataPipelineOutput
 
     - callPredictRelax:
         call: runPredictRelax
         args:
-          jobPath: ${jobPath}
-          inputFeaturesPath: ${dataPipelineOutput.featuresFilePath}
-          jobId: ${jobId}
-          modelParamsPath: ${args.modelParamsPath} 
-          modelPreset: ${args.modelPreset} 
-          runRelax: ${args.runRelax} 
-          imageUri: ${imageUri}
-          region: ${args.region}
-          projectId: ${projectId}
-          numMultimerPredictionsPerModel: ${args.numMultimerPredictionsPerModel}
-          randomSeed: ${args.randomSeed}
-          parallelism: ${args.parallelism}
           machineConfig: ${predictRelaxMachineConfig} 
+          args: args
         result: predictRelaxResult
-        
 
 
 runDataPipeline:
-  params: [jobId, fastaSequence, jobPath, modelPreset, dbPreset, maxTemplateDate, nfsConfig, networkConfig, imageUri, projectId, region, machineConfig]
+  params: [machineConfig, args]
   steps:
     - init:
         assign:
-          - batchJobId: ${jobId + "-data-pipeline"}
+          - batchJobId: ${args.job_id + "-data-pipeline"}
           - batchApi: "batch.googleapis.com/v1"
-          - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
+          - batchApiUrl: ${"https://" + batchApi + "/projects/" + args.project_id + "/locations/" + args.region + "/jobs"}
           - maxRetryCount: 2
           - maxRunDuration: "7200s"
-          - metadataFileName: "data_pipeline.json"
-          - msasFolder: "msas"
-          - featuresFileName: "features.pkl"
-          - sequenceBucket: ${text.split(fastaSequence, "/")[0]}
-          - sequenceObject: ${text.substring(fastaSequence, len(text.split(fastaSequence, "/")[0]) + 1, len(fastaSequence))}
           - refDbsMountPath: "/mnt/disks/ref_dbs"
           - jobDirMountPath: "/mnt/disks/job_dir"
           - inputDirMountPath: "/mnt/disks/input"
-
-    #- mockReturn:
-    #    return:
-    #      featuresFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/features.pkl"
-    #      metadataFilePath: "jk-aff-bucket/batch-jobs/job-alphafold-1668218762/metadata.json"
-
     - runDataPipelineCloudBatchJob:
         call: http.post
         args:
@@ -139,28 +88,28 @@ runDataPipeline:
               taskSpec:
                 runnables:
                   - container:
-                      imageUri: ${imageUri}
+                      imageUri: ${args.image_uri}
                       entrypoint: "python"
                       commands:
                         - "/runners/run_data_pipeline.py"
-                        - ${"--fasta_input_path=" + inputDirMountPath + "/" + sequenceObject}
-                        - ${"--msas_output_path=" + jobDirMountPath + "/" + msasFolder}
-                        - ${"--features_output_path=" + jobDirMountPath + "/" + featuresFileName}
-                        - ${"--metadata_output_path=" + jobDirMountPath + "/" + metadataFileName}
+                        - ${"--fasta_input_path=" + inputDirMountPath + "/" + args.blob_sequence_path}
+                        - ${"--msas_output_path=" + jobDirMountPath + "/" + args.msas_folder}
+                        - ${"--features_output_path=" + jobDirMountPath + "/" + args.data_features_filename}
+                        - ${"--metadata_output_path=" + jobDirMountPath + "/" + args.data_metadata_filename}
                         - ${"--ref_dbs_root_path=" + refDbsMountPath}
-                        - ${"--db_preset=" + dbPreset}
-                        - ${"--model_preset=" + modelPreset}
-                        - ${"--max_template_date=" + maxTemplateDate}
+                        - ${"--db_preset=" + args.db_preset}
+                        - ${"--model_preset=" + args.model_preset}
+                        - ${"--max_template_date=" + args.max_templateDate}
                 volumes:
                   - nfs: 
-                      server: ${nfsConfig.ip_address}
-                      remotePath: ${nfsConfig.nfs_path}
+                      server: ${args.nfs_ip_address}
+                      remotePath: ${args.nfs_path}
                     mountPath: ${refDbsMountPath}
                   - gcs:
-                      remotePath: ${jobPath}
+                      remotePath: ${args.gcs_job_path}
                     mountPath: ${jobDirMountPath}
                   - gcs:
-                      remotePath: ${sequenceBucket}
+                      remotePath: ${args.bucket_name}
                     mountPath: ${inputDirMountPath}
                 computeResource:
                   cpuMilli: ${machineConfig.cpuMilli} 
@@ -176,8 +125,8 @@ runDataPipeline:
                     machineType: ${machineConfig.machineType}
               network:
                 networkInterfaces:
-                  - network: ${networkConfig.network}
-                    subnetwork: ${networkConfig.subnetwork}
+                  - network: ${args.network}
+                    subnetwork: ${args.subnetwork}
             logsPolicy:
               destination: CLOUD_LOGGING
         result: createAndRunBatchJobResponse
@@ -206,44 +155,41 @@ runDataPipeline:
         next: getJob
     - returnResult:
         return:
-          featuresFilePath: ${jobPath + featuresFileName}
-          metadataFilePath: ${jobPath + metadataFileName}
+          featuresFilePath: ${args.gcs_job_path + "/" + args.data_features_filename}
+          metadataFilePath: ${args.gcs_job_path + "/" + args.data_metadata_filename}
     - failExecution:
         raise:
           message: ${"The underlying batch job " + batchJobId + " failed"}
 
 
 runPredictRelax:
-  params: [jobId, inputFeaturesPath, modelParamsPath,  jobPath,  modelPreset, runRelax, imageUri, projectId, region, numMultimerPredictionsPerModel, randomSeed, parallelism, machineConfig]
+  params: [machineConfig, args]
   steps:
     - init:
         assign:
           - batchApi: "batch.googleapis.com/v1"
-          - batchApiUrl: ${"https://" + batchApi + "/projects/" + projectId + "/locations/" + region + "/jobs"}
+          - batchApiUrl: ${"https://" + batchApi + "/projects/" + args.project_id + "/locations/" + args.region + "/jobs"}
           - maxRetryCount: 2
           - maxRunDuration: "7200s"
-          - featuresBucket: ${text.split(inputFeaturesPath, "/")[0]}
-          - featuresObject: ${text.substring(inputFeaturesPath, len(text.split(inputFeaturesPath, "/")[0]) + 1, len(inputFeaturesPath))}
           - numModels: 5
-          - numPredictionsPerModel: ${if(modelPreset=="multimer", numMultimerPredictionsPerModel, 1)}
           - jobDirMountPath: "/mnt/disks/job_dir"
           - featuresDirMountPath: "/mnt/disks/features"
           - modelParamsMountPath: "/mnt/disks/params"
-          - jobResults: [] 
+          - jobResults: []
     - runPredictRelaxCloudBatchJobs: 
         parallel:
-          concurrency_limit: ${parallelism}
-          shared: [jobResults] 
+          concurrency_limit: ${args.parallelism}
+          shared: [jobResults]
           for:
             value: runnerIndex
-            range: ${[0, numModels * numPredictionsPerModel - 1]}
+            range: ${[0, numModels * args.num_predictions_per_model - 1]}
             steps:
               - initParams:
                   assign:
-                    - batchJobId: ${jobId + "-predict-relax-" + runnerIndex}
-                    - modelIndex: ${runnerIndex // numPredictionsPerModel}
-                    - predictionIndex: ${runnerIndex % numPredictionsPerModel}
-                    - predictionRandomSeed: ${randomSeed + runnerIndex}
+                    - batchJobId: ${args.job_id + "-predict-relax-" + runnerIndex}
+                    - modelIndex: ${runnerIndex // args.num_predictions_per_model}
+                    - predictionIndex: ${runnerIndex % args.num_predictions_per_model}
+                    - predictionRandomSeed: ${args.random_seed + runnerIndex}
                     - rawPredictionPath: ${jobDirMountPath +  "/result_model_" + modelIndex + "_pred_" + predictionIndex + ".pkl" }
                     - unrelaxedProteinPath: ${jobDirMountPath +  "/unrelaxed_model_" + modelIndex + "_pred_" + predictionIndex + ".pdb"}
                     - relaxedProteinPath: ${jobDirMountPath +  "/relaxed_model_" + modelIndex + "_pred_" + predictionIndex + ".pdb"}
@@ -268,16 +214,16 @@ runPredictRelax:
                         taskSpec:
                           runnables:
                             - container:
-                                imageUri: ${imageUri}
+                                imageUri: ${args.image_uri}
                                 entrypoint: "python"
                                 commands:
                                   - "/runners/run_predict.py"
-                                  - ${"--input_features_path=" + featuresDirMountPath + "/" + featuresObject}
+                                  - ${"--input_features_path=" + featuresDirMountPath + "/" + args.blob_data_features_path}
                                   - ${"--model_params_path=" + modelParamsMountPath}
                                   - ${"--metadata_output_path=" + predictionMetadataPath}
                                   - ${"--raw_prediction_path=" + rawPredictionPath}
                                   - ${"--unrelaxed_protein_path=" + unrelaxedProteinPath}
-                                  - ${"--model_preset=" + modelPreset}
+                                  - ${"--model_preset=" + args.model_preset}
                                   - ${"--model_index=" + modelIndex}
                                   - ${"--prediction_index=" + predictionIndex}
                                   - ${"--random_seed=" + predictionRandomSeed}
@@ -289,7 +235,7 @@ runPredictRelax:
                                   - ${jobDirMountPath + ":" + jobDirMountPath}
                                   - ${featuresDirMountPath + ":" + featuresDirMountPath}
                             - container:
-                                imageUri: ${imageUri}
+                                imageUri: ${args.image_uri}
                                 entrypoint: "python"
                                 commands:
                                   - "/runners/run_relax.py"
@@ -297,7 +243,7 @@ runPredictRelax:
                                   - ${"--relaxed_protein_path=" + relaxedProteinPath}
                                   - ${"--metadata_output_path=" + relaxationMetadataPath}
                                   - ${"--unrelaxed_protein_path=" + unrelaxedProteinPath}
-                                  - ${if(runRelax, "--run_relax", "norun_relax")}
+                                  - ${if(args.run_relax, "--run_relax", "norun_relax")}
                                 options: "--privileged"
                                 volumes:
                                   - "/var/lib/nvidia/lib64:/usr/local/nvidia/lib64"
@@ -305,13 +251,13 @@ runPredictRelax:
                                   - ${jobDirMountPath + ":" + jobDirMountPath}
                           volumes:
                             - gcs: 
-                                remotePath: ${modelParamsPath}
+                                remotePath: ${args.model_params_path}
                               mountPath: ${modelParamsMountPath}
                             - gcs:
-                                remotePath: ${jobPath}
+                                remotePath: ${args.gcs_job_path}
                               mountPath: ${jobDirMountPath}
                             - gcs:
-                                remotePath: ${featuresBucket}
+                                remotePath: ${args.bucket_name}
                               mountPath: ${featuresDirMountPath}
                           computeResource:
                             cpuMilli: ${machineConfig.cpuMilli} 
