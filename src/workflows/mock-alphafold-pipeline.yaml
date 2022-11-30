@@ -1,0 +1,166 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - supportedMachineConfigs: {}
+          - supportedMachineConfigs["c2-standard-16"]:
+                machineType: "c2-standard-16"
+                cpuMilli: 16000
+                memoryMib: 64000
+                bootDiskMib: 200000
+          - supportedMachineConfigs["c2-standard-30"]:
+                machineType: "c2-standard-30"
+                cpuMilli: 30000
+                memoryMib: 120000
+                bootDiskMib: 200000
+          - supportedMachineConfigs["n1-standard-8-t4"]:
+                machineType: "n1-standard-8"
+                cpuMilli: 8000
+                memoryMib: 30000
+                bootDiskMib: 200000
+                gpuType: "nvidia-tesla-t4"
+                gpuCount: 1
+          - supportedMachineConfigs["a2-highgpu-1g"]:
+                machineType: "a2-highgpu-1g"
+                cpuMilli: 12000
+                memoryMib: 85000
+                bootDiskMib: 200000
+                gpuType: "nvidia-tesla-a100"
+                gpuCount: 1
+          - dataPipelineMachineConfig: ${default(map.get(supportedMachineConfigs, args.data_pipeline_machine_type), supportedMachineConfigs["c2-standard-16"])}
+          - predictRelaxMachineConfig: ${default(map.get(supportedMachineConfigs, args.predict_relax_machine_type), supportedMachineConfigs["n1-standard-8-t4"])}
+
+    - callDataPipeline:
+        call: runDataPipeline
+        args:
+          machineConfig: ${dataPipelineMachineConfig}
+          args: ${args}
+        result: dataPipelineOutput
+
+    - callPredictRelax:
+        call: runPredictRelax
+        args:
+          machineConfig: ${predictRelaxMachineConfig} 
+          args: ${args}
+        result: predictRelaxResult
+
+
+runDataPipeline:
+  params: [machineConfig, args]
+  steps:
+    - init:
+        assign:
+          - batchJobId: ${args.job_id + "-data-pipeline"}
+          - batchApi: "batch.googleapis.com/v1"
+          - batchApiUrl: ${"https://" + batchApi + "/projects/" + args.project_id + "/locations/" + args.region + "/jobs"}
+          - maxRetryCount: 2
+          - maxRunDuration: "7200s"
+          - refDbsMountPath: "/mnt/disks/ref_dbs"
+          - jobDirMountPath: "/mnt/disks/job_dir"
+          - inputDirMountPath: "/mnt/disks/input"
+          - state: "SUCCEEDED"
+    - checkState:
+        switch:
+          - condition: ${state == "SUCCEEDED"}
+            next: returnResult 
+          - condition: ${state == "FAILED"}
+            next: failExecution 
+    - returnResult:
+        steps:
+            - updateExperimentStatus:
+                call: http.post
+                args:
+                  url: https://update-db-4tiu4vqi2q-uc.a.run.app
+                  headers:
+                    Content-Type: "application/json"
+                  body: 
+                    status:
+                      ${batchJobId}: ${state}
+                    job_id: ${args.job_id}
+            - returnStatus:
+                return: ${state}
+    - failExecution:
+        raise:
+          message: ${"The underlying batch job " + batchJobId + " failed"}
+
+
+runPredictRelax:
+  params: [machineConfig, args]
+  steps:
+    - init:
+        assign:
+          - batchApi: "batch.googleapis.com/v1"
+          - batchApiUrl: ${"https://" + batchApi + "/projects/" + args.project_id + "/locations/" + args.region + "/jobs"}
+          - maxRetryCount: 2
+          - maxRunDuration: "7200s"
+          - numModels: 5
+          - jobDirMountPath: "/mnt/disks/job_dir"
+          - featuresDirMountPath: "/mnt/disks/features"
+          - modelParamsMountPath: "/mnt/disks/params"
+          - jobResults: {}
+          - states: ["FAILED", "SUCCEEDED", "FAILED", "SUCCEEDED", "FAILED"]
+    - runPredictRelaxCloudBatchJobs: 
+        parallel:
+          concurrency_limit: ${args.parallelism}
+          shared: [jobResults]
+          for:
+            value: runnerIndex
+            range: ${[0, numModels * args.num_predictions_per_model - 1]}
+            steps:
+              - initParams:
+                  assign:
+                    - batchJobId: ${args.job_id + "-predict-relax-" + runnerIndex}
+                    - modelIndex: ${runnerIndex // args.num_predictions_per_model}
+                    - predictionIndex: ${runnerIndex % args.num_predictions_per_model}
+                    - predictionRandomSeed: ${args.random_seed + runnerIndex}
+                    - rawPredictionPath: ${jobDirMountPath +  "/result_model_" + modelIndex + "_pred_" + predictionIndex + ".pkl" }
+                    - unrelaxedProteinPath: ${jobDirMountPath +  "/unrelaxed_model_" + modelIndex + "_pred_" + predictionIndex + ".pdb"}
+                    - relaxedProteinPath: ${jobDirMountPath +  "/relaxed_model_" + modelIndex + "_pred_" + predictionIndex + ".pdb"}
+                    - predictionMetadataPath: ${jobDirMountPath + "/pred_metadata_model_" + modelIndex + "_pred_" + predictionIndex + ".json"}
+                    - relaxationMetadataPath: ${jobDirMountPath + "/relax_metadata_model_" + modelIndex + "_pred_" + predictionIndex + ".json"}
+              - logJobStart:
+                  call: sys.log
+                  args:
+                    data: ${"Starting job " + batchJobId + " Concurrency level is " + args.parallelism}
+              - logState:
+                  call: sys.log
+                  args:
+                    data: ${"Current job state for job  " + batchJobId + " is " + states[runnerIndex]}
+              - checkState:
+                  switch:
+                    - condition: ${states[runnerIndex] == "SUCCEEDED"}
+                      next: returnResult
+                    - condition: ${states[runnerIndex] == "FAILED"}
+                      next: returnResult
+              - returnResult:
+                  assign:
+                    - jobResults[batchJobId]: ${states[runnerIndex]}
+
+    - logUpdateExperimentStatus:
+        call: sys.log
+        args:
+          data: ${jobResults}
+    - updateExperimentStatus:
+        call: http.post
+        args:
+          url: https://update-db-4tiu4vqi2q-uc.a.run.app
+          headers:
+            Content-Type: "application/json"
+          body:
+            status: ${jobResults}
+            job_id: ${args.job_id}

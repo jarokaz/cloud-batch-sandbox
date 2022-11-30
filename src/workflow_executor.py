@@ -15,6 +15,7 @@
 
 """Execute a workflow and print the execution results."""
 import json
+import os
 import time
 import typing as T
 
@@ -30,6 +31,10 @@ def prepare_args_for_experiments(
     project_id: str,
     bucket_name: str,
     region: str,
+    function_uri: str,
+    local_sequence_path: str,
+    data_pipeline_machine_type: str,
+    predict_relax_machine_type: str,
     sequence_str: str,
     job_id: str,
     blob_sequence_path: str,
@@ -40,7 +45,7 @@ def prepare_args_for_experiments(
     nfs_ip_address: str,
     nfs_path: str,
     network: str,
-    subnet: str,
+    subnetwork: str,
     max_template_date: str,
     model_preset: str,
     db_preset: str,
@@ -60,10 +65,22 @@ def prepare_args_for_experiments(
     storage_client = storage.Client()
     db = firestore.Client()
 
+    # Load the sequence content to a string
+    with open(local_sequence_path, 'r') as fp:
+        sequence_str = fp.read()
+
+    job_id = f'job-alphafold-{int(time.time()*1000)}'
+    blob_sequence_path = os.path.join(job_id, 'sequence.fasta')
+    gcs_job_path = os.path.join(bucket_name, job_id)
+
+
     args = {}
     args['project_id'] = project_id
     args['bucket_name'] = bucket_name
     args['region'] = region
+    args['function_uri'] = function_uri
+    args['data_pipeline_machine_type'] = data_pipeline_machine_type
+    args['predict_relax_machine_type'] = predict_relax_machine_type
     args['sequence_str'] = sequence_str
     args['job_id'] = job_id
     args['blob_sequence_path'] = blob_sequence_path
@@ -74,7 +91,7 @@ def prepare_args_for_experiments(
     args['nfs_ip_address'] = nfs_ip_address
     args['nfs_path'] = nfs_path
     args['network'] = network
-    args['subnet'] = subnet
+    args['subnetwork'] = subnetwork
     args['max_template_date'] = max_template_date
     args['model_preset'] = model_preset
     args['db_preset'] = db_preset
@@ -117,7 +134,7 @@ def prepare_args_for_experiments(
     blob.upload_from_string(args['sequence_str'])
 
     # Log metadata to Firestore
-    experiment_document_ref = db.collection('experiments').document()
+    experiment_document_ref = db.collection('experiments').document(job_id)
     experiment_document_ref.set(args, merge=True)
 
     return args
@@ -135,25 +152,15 @@ def execute_workflow(
     parent = workflows_client.workflow_path(
         args['project_id'], args['region'], workflow_name)
 
+    execution = executions_v1beta.Execution(argument=json.dumps(args))
+    exec_request = executions_v1beta.CreateExecutionRequest(
+        parent = parent,
+        execution = execution
+    )
+
     # Execute the workflow.
-    response = execution_client.create_execution(
-        request={"parent": parent, "arguments": json.dumps(args)}, )
+    response = execution_client.create_execution(request=exec_request)
+
     print(f"Created execution: {response.name}")
 
-    # Wait for execution to finish, then print results.
-    execution_finished = False
-    backoff_delay = 1  # Start wait with delay of 1 second
-    print('Poll every second for result...')
-    while (not execution_finished):
-        execution = execution_client.get_execution(request={"name": response.name})
-        execution_finished = execution.state != executions.Execution.State.ACTIVE
-
-        # If we haven't seen the result yet, wait a second.
-        if not execution_finished:
-            print('- Waiting for results...')
-            time.sleep(backoff_delay)
-            backoff_delay *= 2  # Double the delay to provide exponential backoff.
-        else:
-            print(f'Execution finished with state: {execution.state.name}')
-            print(execution.result)
-            return execution.result
+    return response.name

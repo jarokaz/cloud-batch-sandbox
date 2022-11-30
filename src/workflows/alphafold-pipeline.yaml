@@ -42,21 +42,21 @@ main:
                 bootDiskMib: 200000
                 gpuType: "nvidia-tesla-a100"
                 gpuCount: 1
-          - dataPipelineMachineConfig: ${default(map.get(supportedMachineConfigs, args.dataPipelineMachineType), supportedMachineConfigs["c2-standard-16"])}
-          - predictRelaxMachineConfig: ${default(map.get(supportedMachineConfigs, args.predictRelaxMachineType), supportedMachineConfigs["n1-standard-8-t4"])}
+          - dataPipelineMachineConfig: ${default(map.get(supportedMachineConfigs, args.data_pipeline_machine_type), supportedMachineConfigs["c2-standard-16"])}
+          - predictRelaxMachineConfig: ${default(map.get(supportedMachineConfigs, args.predict_relax_machine_type), supportedMachineConfigs["n1-standard-8-t4"])}
 
     - callDataPipeline:
         call: runDataPipeline
         args:
           machineConfig: ${dataPipelineMachineConfig}
-          args: args
+          args: ${args}
         result: dataPipelineOutput
 
     - callPredictRelax:
         call: runPredictRelax
         args:
           machineConfig: ${predictRelaxMachineConfig} 
-          args: args
+          args: ${args}
         result: predictRelaxResult
 
 
@@ -99,14 +99,14 @@ runDataPipeline:
                         - ${"--ref_dbs_root_path=" + refDbsMountPath}
                         - ${"--db_preset=" + args.db_preset}
                         - ${"--model_preset=" + args.model_preset}
-                        - ${"--max_template_date=" + args.max_templateDate}
+                        - ${"--max_template_date=" + args.max_template_date}
                 volumes:
                   - nfs: 
                       server: ${args.nfs_ip_address}
                       remotePath: ${args.nfs_path}
                     mountPath: ${refDbsMountPath}
                   - gcs:
-                      remotePath: ${args.gcs_job_path}
+                      remotePath: ${args.gcs_job_path + "/"}
                     mountPath: ${jobDirMountPath}
                   - gcs:
                       remotePath: ${args.bucket_name}
@@ -154,9 +154,19 @@ runDataPipeline:
           seconds: 10
         next: getJob
     - returnResult:
-        return:
-          featuresFilePath: ${args.gcs_job_path + "/" + args.data_features_filename}
-          metadataFilePath: ${args.gcs_job_path + "/" + args.data_metadata_filename}
+        steps:
+            - updateExperimentStatus:
+                call: http.post
+                args:
+                  url: ${args.function_uri}
+                  headers:
+                    Content-Type: "application/json"
+                  body:
+                    status:
+                      ${batchJobId} : ${getJobResult.body.status.state}
+                    job_id: ${args.job_id}
+            - returnStatus:
+                return: ${getJobResult.body.status.state}
     - failExecution:
         raise:
           message: ${"The underlying batch job " + batchJobId + " failed"}
@@ -175,7 +185,7 @@ runPredictRelax:
           - jobDirMountPath: "/mnt/disks/job_dir"
           - featuresDirMountPath: "/mnt/disks/features"
           - modelParamsMountPath: "/mnt/disks/params"
-          - jobResults: []
+          - jobResults: {}
     - runPredictRelaxCloudBatchJobs: 
         parallel:
           concurrency_limit: ${args.parallelism}
@@ -198,7 +208,7 @@ runPredictRelax:
               - logJobStart:
                   call: sys.log
                   args:
-                    data: ${"Starting job " + batchJobId + " Concurrency level is " + parallelism}
+                    data: ${"Starting job " + batchJobId + " Concurrency level is " + args.parallelism}
               - startBatchJob:
                   call: http.post
                   args:
@@ -254,7 +264,7 @@ runPredictRelax:
                                 remotePath: ${args.model_params_path}
                               mountPath: ${modelParamsMountPath}
                             - gcs:
-                                remotePath: ${args.gcs_job_path}
+                                remotePath: ${args.gcs_job_path + "/"}
                               mountPath: ${jobDirMountPath}
                             - gcs:
                                 remotePath: ${args.bucket_name}
@@ -274,7 +284,6 @@ runPredictRelax:
                                 - type: ${machineConfig.gpuType}
                                   count: ${machineConfig.gpuCount}
                             installGpuDrivers: true
-
                       logsPolicy:
                         destination: CLOUD_LOGGING
                   result: createAndRunBatchJobResponse
@@ -294,7 +303,7 @@ runPredictRelax:
                     - condition: ${getJobResult.body.status.state == "SUCCEEDED"}
                       next: returnResult
                     - condition: ${getJobResult.body.status.state == "FAILED"}
-                      next: returnResult 
+                      next: returnResult
                   next: sleep
               - sleep:
                   call: sys.sleep
@@ -303,9 +312,18 @@ runPredictRelax:
                   next: getJob
               - returnResult:
                   assign:
-                    - jobResults: ${list.concat(jobResults, getJobResult)}
-                    
-    - monitorJobs:
+                    - jobResults[batchJobId]: ${getJobResult.body.status.state}
+
+    - logUpdateExperimentStatus:
         call: sys.log
         args:
           data: ${jobResults}
+    - updateExperimentStatus:
+        call: http.post
+        args:
+          url: ${args.function_uri}
+          headers:
+            Content-Type: "application/json"
+          body:
+            status: ${jobResults}
+            job_id: ${args.job_id}
