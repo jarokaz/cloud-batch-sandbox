@@ -35,25 +35,14 @@ def prepare_args_for_experiments(
     local_sequence_path: str,
     data_pipeline_machine_type: str,
     predict_relax_machine_type: str,
-    sequence_str: str,
-    job_id: str,
-    blob_sequence_path: str,
-    gcs_job_path: str,
     image_uri: str,
     network_name: str,
     subnetwork_name: str,
     nfs_ip_address: str,
     nfs_path: str,
-    network: str,
-    subnetwork: str,
     max_template_date: str,
     model_preset: str,
     db_preset: str,
-    data_metadata_filename: str,
-    msas_folder: str,
-    data_features_filename: str,
-    blob_data_metadata_path: str,
-    blob_data_features_path: str,
     num_predictions_per_model: int,
     model_params_path: str,
     num_models: int,
@@ -73,6 +62,17 @@ def prepare_args_for_experiments(
     blob_sequence_path = os.path.join(job_id, 'sequence.fasta')
     gcs_job_path = os.path.join(bucket_name, job_id)
 
+    # Don't change
+    network = f'projects/{project_id}/global/networks/{network_name}'
+    subnetwork = f'projects/{project_id}/regions/{region}/subnetworks/{subnetwork_name}'
+
+    # Don't change
+    data_metadata_filename = 'data_pipeline.json'
+    msas_folder = 'msas'
+    data_features_filename = 'features.pkl'
+
+    blob_data_metadata_path = os.path.join(job_id,'data_pipeline.json')
+    blob_data_features_path = os.path.join(job_id,'features.pkl')
 
     args = {}
     args['project_id'] = project_id

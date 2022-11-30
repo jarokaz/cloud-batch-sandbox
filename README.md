@@ -3,7 +3,7 @@
 ## Deploy Workflow
 
 ```
-gcloud workflows deploy af-sequential-workflow \
+gcloud workflows deploy alphafold-workflow-batch \
   --source=./src/workflows/alphafold-pipeline.yaml
 ```
 
