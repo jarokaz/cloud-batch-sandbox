@@ -327,3 +327,5 @@ runPredictRelax:
           body:
             status: ${jobResults}
             job_id: ${args.job_id}
+            bucket_name: ${args.bucket_name}
+            args: ${args}

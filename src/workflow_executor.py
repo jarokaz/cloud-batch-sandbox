@@ -21,7 +21,6 @@ import typing as T
 
 from google.cloud import workflows_v1beta
 from google.cloud.workflows import executions_v1beta
-from google.cloud.workflows.executions_v1beta.types import executions
 
 from google.cloud import storage
 from google.cloud import firestore
@@ -48,7 +47,8 @@ def prepare_args_for_experiments(
     num_models: int,
     run_relax: bool,
     random_seed: int,
-    parallelism: int
+    parallelism: int,
+    labels: T.Dict
 ) -> T.Dict:
     """Prepare arguments to execute Workflow"""
     storage_client = storage.Client()
@@ -106,6 +106,7 @@ def prepare_args_for_experiments(
     args['run_relax'] = run_relax
     args['random_seed'] = random_seed
     args['parallelism'] = parallelism
+    args['labels'] = labels
 
     status = {f'{job_id}-data-pipeline': 'SCHEDULED'}
 
@@ -126,7 +127,7 @@ def prepare_args_for_experiments(
         status[model_relax['batch_job_id']] = 'SCHEDULED'
 
     args['status'] = status
-    args['model_relax'] = model_relax_info
+    args['predict_relax'] = model_relax_info
 
     # Upload sequence to GCS
     base_bucket = storage_client.bucket(args['bucket_name'])
