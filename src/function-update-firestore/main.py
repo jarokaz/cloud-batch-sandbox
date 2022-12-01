@@ -33,6 +33,8 @@ def af_update_experiment_status(request):
 
             i['results'] = {**prediction_data, **relax_data}
             update_data.append(i)
+        else:
+            update_data.append(i)
 
     run_document_ref.set({'predict_relax': update_data, 'status':args['status']}, merge=True)
 
