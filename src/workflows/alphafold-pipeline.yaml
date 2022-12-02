@@ -165,6 +165,9 @@ runDataPipeline:
                     status:
                       ${batchJobId} : ${getJobResult.body.status.state}
                     job_id: ${args.job_id}
+                    bucket_name: ${args.bucket_name}
+                    args: ${args}
+                    mode: "data"
             - returnStatus:
                 return: ${getJobResult.body.status.state}
     - failExecution:
@@ -329,3 +332,4 @@ runPredictRelax:
             job_id: ${args.job_id}
             bucket_name: ${args.bucket_name}
             args: ${args}
+            mode: "predict_relax"

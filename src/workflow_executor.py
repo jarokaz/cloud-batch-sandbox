@@ -117,11 +117,16 @@ def prepare_args_for_experiments(
         model_relax['model_index'] = f'{i // num_predictions_per_model}'
         model_relax['prediction_index'] = f'{i % num_predictions_per_model}'
         model_relax['prediction_random_seed'] = f'{random_seed + i}'
-        model_relax['blob_raw_prediction_path'] = f'result_model_{model_relax["model_index"]}_pred_{model_relax["prediction_index"]}.pkl'
-        model_relax['blob_unrelaxed_protein_path'] = f'unrelaxed_model_{model_relax["model_index"]}_pred_{model_relax["prediction_index"]}.pdb'
-        model_relax['blob_relaxed_protein_path'] = f'relaxed_model_{model_relax["model_index"]}_pred_{model_relax["prediction_index"]}.pdb'
-        model_relax['blob_prediction_metadata_path'] = f'pred_metadata_model_{model_relax["model_index"]}_pred_{model_relax["prediction_index"]}.json'
-        model_relax['blob_relaxation_metadata_path'] = f'relax_metadata_model_{model_relax["model_index"]}_pred_{model_relax["prediction_index"]}.json'
+        model_relax['blob_raw_prediction_path'] = os.path.join(
+            job_id, f'result_model_{model_relax["model_index"]}_pred_{model_relax["prediction_index"]}.pkl')
+        model_relax['blob_unrelaxed_protein_path'] = os.path.join(
+            job_id, f'unrelaxed_model_{model_relax["model_index"]}_pred_{model_relax["prediction_index"]}.pdb')
+        model_relax['blob_relaxed_protein_path'] = os.path.join(
+            job_id, f'relaxed_model_{model_relax["model_index"]}_pred_{model_relax["prediction_index"]}.pdb')
+        model_relax['blob_prediction_metadata_path'] = os.path.join(
+            job_id, f'pred_metadata_model_{model_relax["model_index"]}_pred_{model_relax["prediction_index"]}.json')
+        model_relax['blob_relaxation_metadata_path'] = os.path.join(
+            job_id, f'relax_metadata_model_{model_relax["model_index"]}_pred_{model_relax["prediction_index"]}.json')
 
         model_relax_info.append(model_relax)
         status[model_relax['batch_job_id']] = 'SCHEDULED'
